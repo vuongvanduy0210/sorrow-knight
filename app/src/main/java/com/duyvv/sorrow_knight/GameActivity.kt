@@ -44,6 +44,10 @@ class GameActivity : AppCompatActivity() {
             binding.gameView.move(GameView.Direction.UP)
             true
         }*/
+
+        binding.btnAttack.setOnClickListener {
+            binding.gameView.attack()
+        }
     }
 
     @SuppressLint("ClickableViewAccessibility")
