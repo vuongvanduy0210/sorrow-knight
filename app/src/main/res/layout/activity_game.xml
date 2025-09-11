@@ -3,14 +3,21 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- GameView hien thi nhan vat va map -->
+    <!-- Video background -->
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/playerView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/black"
+        android:keepScreenOn="true" />
+
+    <!-- GameView hiển thị nhân vật và item -->
     <com.duyvv.sorrow_knight.ui.GameView
         android:id="@+id/gameView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="#222222" />
+        android:layout_height="match_parent" />
 
-    <!-- Cac nut dieu khien -->
+    <!-- Các nút điều khiển -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -19,14 +26,12 @@
         android:padding="16dp"
         android:gravity="center_horizontal">
 
-        <!-- Nut di len -->
         <Button
             android:id="@+id/btnUp"
             android:layout_width="64dp"
             android:layout_height="64dp"
             android:text="↑" />
 
-        <!-- Nut trai, dung, phai -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -62,7 +67,6 @@
         </LinearLayout>
     </LinearLayout>
 
-    <!-- Nut Attack (goc duoi ben phai) -->
     <Button
         android:id="@+id/btnAttack"
         android:layout_width="80dp"
