@@ -4,15 +4,11 @@
     android:layout_height="match_parent"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <!-- Video background -->
-    <androidx.media3.ui.PlayerView
-        android:id="@+id/playerView"
+    <!-- Scrolling background -->
+    <com.duyvv.sorrow_knight.ui.ScrollingBackgroundView
+        android:id="@+id/scrollingBackground"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="@android:color/black"
-        android:keepScreenOn="true"
-        app:resize_mode="fill"
-        app:use_controller="false" />
+        android:layout_height="match_parent" />
 
     <!-- GameView hiển thị nhân vật và item -->
     <com.duyvv.sorrow_knight.ui.GameView

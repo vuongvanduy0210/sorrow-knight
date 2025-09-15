@@ -9,12 +9,16 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
 import android.util.AttributeSet
+import android.util.Log
 import android.view.View
 import androidx.core.graphics.withScale
 import com.duyvv.sorrow_knight.R
+import com.duyvv.sorrow_knight.model.Enemy
 import com.duyvv.sorrow_knight.model.MapItem
 
 class GameView(context: Context, attrs: AttributeSet? = null) : View(context, attrs) {
+
+    private val TAG = this::class.java.simpleName
 
     // ==================== SPRITE ====================
     // Run sprite
@@ -54,9 +58,21 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
     // Hitbox màu hồng để debug
     private val hitboxPaint = Paint().apply {
-        color = Color.argb(120, 255, 105, 180)
+        color = Color.argb(100, 0, 200, 255)
         style = Paint.Style.FILL
     }
+
+    // Hitbox quái để debug
+    private val enemyHitboxPaint = Paint().apply {
+        color = Color.argb(100, 0, 200, 255)
+        style = Paint.Style.FILL
+    }
+
+    // Temp rects to avoid per-frame allocations
+    private val enemySrcRect = Rect()
+    private val enemyDstRect = RectF()
+    private val playerBoxRect = RectF()
+    private val enemyHitboxRect = RectF()
 
     // ==================== DIRECTION ====================
     enum class Direction { UP, DOWN, LEFT, RIGHT }
@@ -64,6 +80,27 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
     // ==================== ITEMS ====================
     private val items = mutableListOf<MapItem>()
+
+    // ==================== ENEMIES ====================
+    private val enemies = mutableListOf<Enemy>()
+    // Mỗi sheet gồm 6 frame trên 1 hàng
+    private val enemyIdleSheet: Bitmap by lazy { BitmapFactory.decodeResource(resources, R.drawable.torch_idle) }
+    private val enemyMoveSheet: Bitmap by lazy { BitmapFactory.decodeResource(resources, R.drawable.torch_move) }
+    private val enemyAttackSheet: Bitmap by lazy { BitmapFactory.decodeResource(resources, R.drawable.torch_attack) }
+    private val enemyColumns = 6
+    private val enemyFrameWidth: Int by lazy { enemyIdleSheet.width / enemyColumns }
+    private val enemyFrameHeight: Int by lazy { enemyIdleSheet.height }
+    private val enemyFrameDuration = 120L
+    private val enemyScale = 0.5f
+    private val enemyPaddingHorizontal = 0
+    private val enemyPaddingVertical = 0
+    private var lastSpawnTime = 0L
+    private val spawnIntervalMs = 100000L
+
+    // Player state (simple health and hit cooldown)
+    private var playerHealth = 3
+    private var lastHitTime = 0L
+    private val hitCooldownMs = 800L
 
     // ==================== Lifecycle ====================
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -78,8 +115,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
         updateCharacterState()
         updateAnimationFrame()
+        updateEnemies()
 
         drawItems(canvas)
+        drawEnemies(canvas)
         drawCharacter(canvas)
 
         postInvalidateOnAnimation()
@@ -107,6 +146,46 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         for (item in items) {
             if (!item.isDestroyed) {
                 canvas.drawBitmap(item.bitmap, item.x, item.y, paint)
+            }
+        }
+    }
+
+    private fun drawEnemies(canvas: Canvas) {
+        for (enemy in enemies) {
+            if (enemy.isDestroyed) continue
+            val sheet = when (enemy.state) {
+                Enemy.State.ATTACK -> enemyAttackSheet
+                Enemy.State.MOVE -> enemyMoveSheet
+                else -> enemyIdleSheet
+            }
+            val frame = enemy.currentFrame
+            val fw = sheet.width / enemyColumns
+            val fh = sheet.height
+            val srcLeft = frame * fw + enemyPaddingHorizontal
+            val srcTop = 0 + enemyPaddingVertical
+            val srcRight = (frame + 1) * fw - enemyPaddingHorizontal
+            val srcBottom = fh - enemyPaddingVertical
+            enemySrcRect.set(srcLeft, srcTop, srcRight, srcBottom)
+
+            enemyDstRect.set(
+                enemy.x,
+                enemy.y,
+                enemy.x + fw * enemyScale,
+                enemy.y + fh * enemyScale
+            )
+
+            // Vẽ hitbox quái để debug
+//            getEnemyHitboxInto(enemy, enemyHitboxRect)
+//            canvas.drawRect(enemyHitboxRect, enemyHitboxPaint)
+
+            // Lật ảnh theo hướng nhìn
+            val centerX = enemyDstRect.centerX()
+            if (enemy.facingLeft) {
+                canvas.withScale(-1f, 1f, centerX, enemyDstRect.centerY()) {
+                    drawBitmap(sheet, enemySrcRect, enemyDstRect, paint)
+                }
+            } else {
+                canvas.drawBitmap(sheet, enemySrcRect, enemyDstRect, paint)
             }
         }
     }
@@ -171,6 +250,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             // Bình thường (mặt phải)
             canvas.drawBitmap(bitmap, srcRect, dstRect, paint)
         }
+//        drawHitbox(canvas)
     }
 
     private fun drawHitbox(canvas: Canvas) {
@@ -217,6 +297,82 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         }
     }
 
+    private fun updateEnemies() {
+        val now = System.currentTimeMillis()
+
+        // Spawn new enemy from the right
+        if (now - lastSpawnTime > spawnIntervalMs && enemyIdleSheet.width > 0 && enemyIdleSheet.height > 0) {
+            spawnEnemy()
+            lastSpawnTime = now
+        }
+
+        // Update positions and check collisions
+        playerBoxRect.set(
+            characterX,
+            characterY,
+            characterX + runFrameWidth * scale,
+            characterY + runFrameHeight * scale
+        )
+
+        for (enemy in enemies) {
+            if (enemy.isDestroyed) continue
+            // Nếu đang tấn công thì không cập nhật vị trí (đứng im)
+            if (enemy.state != Enemy.State.ATTACK) {
+                val prevMovingLeft = enemy.movingLeft
+                enemy.update()
+                if (enemy.movingLeft != prevMovingLeft) {
+                    enemy.facingLeft = enemy.movingLeft
+                }
+            }
+
+            // Khoảng cách theo cả X và Y
+            val enemyCenterX = enemy.x + (enemyFrameWidth * enemyScale) / 2f
+            val enemyCenterY = enemy.y + (enemyFrameHeight * enemyScale) / 2f
+            val playerCenterX = characterX + (runFrameWidth * scale) / 2f
+            val playerCenterY = characterY + (runFrameHeight * scale) / 2f
+            val distX = kotlin.math.abs(playerCenterX - enemyCenterX)
+            val distY = kotlin.math.abs(playerCenterY - enemyCenterY)
+            val attackRangeX = enemyFrameWidth * enemyScale * 0.6f
+            val attackRangeY = enemyFrameHeight * enemyScale * 0.6f
+
+            // Xác định state
+            val shouldAttack = distX < attackRangeX && distY < attackRangeY
+            if (shouldAttack) {
+                enemy.state = Enemy.State.ATTACK
+                enemy.facingLeft = playerCenterX < enemyCenterX
+            } else {
+                enemy.state = Enemy.State.MOVE
+            }
+
+            // Cập nhật frame animation
+            if (now - enemy.frameTimerMs > enemyFrameDuration) {
+                val looping = enemy.state == Enemy.State.ATTACK || enemy.state == Enemy.State.MOVE
+                if (looping) {
+                    enemy.currentFrame = (enemy.currentFrame + 1) % enemyColumns
+                    if (enemy.currentFrame == 0) enemy.dealtDamageThisAttack = false
+                } else {
+                    enemy.currentFrame = 0
+                }
+                enemy.frameTimerMs = now
+            }
+
+            // Enemy attacks on contact
+//            getEnemyHitboxInto(enemy, enemyHitboxRect)
+            if (RectF.intersects(playerBoxRect, enemyHitboxRect)) {
+                val canDamage = if (enemy.state == Enemy.State.ATTACK) !enemy.dealtDamageThisAttack else now - lastHitTime > hitCooldownMs
+                if (canDamage) {
+                    playerHealth = (playerHealth - 1).coerceAtLeast(0)
+                    lastHitTime = now
+                    println("Player bị tấn công! Máu còn: $playerHealth")
+                    if (enemy.state == Enemy.State.ATTACK) enemy.dealtDamageThisAttack = true
+                }
+            }
+        }
+
+        // Remove off-screen or destroyed enemies
+        enemies.removeAll { it.isDestroyed || it.x + (enemyFrameWidth * enemyScale) < 0 }
+    }
+
     // ==================== CONTROL ====================
     fun startMoving(direction: Direction) {
         movingDirection = direction
@@ -236,6 +392,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             characterY + runFrameHeight * scale
         )
         checkItemCollision(characterBox)
+        checkEnemyHit(characterBox)
 
         postDelayed({ isAttacking = false }, 500)
     }
@@ -248,5 +405,46 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 println("Item ${item.id} bị phá hủy!")
             }
         }
+    }
+
+    private fun checkEnemyHit(characterBox: RectF) {
+        for (enemy in enemies) {
+//            getEnemyHitboxInto(enemy, enemyHitboxRect)
+            if (!enemy.isDestroyed && RectF.intersects(characterBox, enemyHitboxRect)) {
+                enemy.isDestroyed = true
+                println("Quái vật ${enemy.id} bị tiêu diệt!")
+            }
+        }
+    }
+
+    private fun getEnemyHitboxInto(enemy: Enemy, outRect: RectF) {
+        val insetX = (enemyFrameWidth * enemyScale) * 0.25f
+        val insetY = (enemyFrameHeight * enemyScale) * 0.30f
+        outRect.set(
+            enemy.x + insetX,
+            enemy.y + insetY,
+            enemy.x + enemyFrameWidth * enemyScale - insetX,
+            enemy.y + enemyFrameHeight * enemyScale - insetY
+        )
+    }
+
+    private fun spawnEnemy() {
+        val maxX = (width - enemyFrameWidth * enemyScale).coerceAtLeast(0f)
+        val maxY = (height - enemyFrameHeight * enemyScale).coerceAtLeast(0f)
+        val spawnX = (0..maxX.toInt()).random().toFloat()
+        val spawnY = (0..maxY.toInt()).random().toFloat()
+        val patrolDistance = (enemyFrameWidth * enemyScale * 3).toInt().coerceAtLeast(30) // ~3 frame widths
+        val enemy = Enemy(
+            id = "enemy_${System.currentTimeMillis()}",
+            x = spawnX,
+            y = spawnY,
+            bitmap = enemyIdleSheet,
+            speedPxPerFrame = 2.5f
+        )
+        enemy.patrolLeftBound = (spawnX - patrolDistance).coerceAtLeast(0f)
+        enemy.patrolRightBound = (spawnX + patrolDistance).coerceAtMost(maxX)
+        enemy.movingLeft = listOf(true, false).random()
+        enemies.add(enemy)
+        // Debug log removed to avoid jank
     }
 }
