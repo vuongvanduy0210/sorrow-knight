@@ -40,6 +40,8 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
     // ==================== STATE ====================
     private var isAttacking = false
+    private var playerPendingAttack = false
+    private var playerAttackApplied = false
     private var isMoving = false
 
     // Vị trí nhân vật
@@ -96,6 +98,9 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private val enemyPaddingVertical = 0
     private var lastSpawnTime = 0L
     private val spawnIntervalMs = 100000L
+    private val maxEnemies = 3
+    private val minEnemiesAtStart = 1
+    private var previousAliveEnemies = 0
 
     // Player state (simple health and hit cooldown)
     private var playerHealth = 3
@@ -106,8 +111,12 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         setupCharacterPosition(h)
-        items.clear()
-        initItems()
+        // Spawn 3 enemies at game start
+        enemies.clear()
+        repeat(3) {
+            if (enemyIdleSheet.width > 0 && enemyIdleSheet.height > 0) spawnEnemy()
+        }
+        previousAliveEnemies = enemies.count { !it.isDestroyed }
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -117,7 +126,19 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         updateAnimationFrame()
         updateEnemies()
 
-        drawItems(canvas)
+        // Apply player attack damage only after animation completes
+        if (playerPendingAttack) {
+            val characterBox = RectF(
+                characterX,
+                characterY,
+                characterX + runFrameWidth * scale,
+                characterY + runFrameHeight * scale
+            )
+            checkEnemyHit(characterBox)
+            playerPendingAttack = false
+        }
+
+//        drawItems(canvas)
         drawEnemies(canvas)
         drawCharacter(canvas)
 
@@ -291,6 +312,12 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 val total = if (isAttacking) attackTotalFrames else runTotalFrames
                 currentFrame = (currentFrame + 1) % total
                 frameTimer = now
+                // Gây sát thương khi đạt tới frame thứ 3 (0-based index 3)
+                val attackHitFrameIndex = 3
+                if (isAttacking && currentFrame == attackHitFrameIndex && !playerAttackApplied) {
+                    playerPendingAttack = true
+                    playerAttackApplied = true
+                }
             }
         } else {
             currentFrame = 0
@@ -300,10 +327,12 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private fun updateEnemies() {
         val now = System.currentTimeMillis()
 
-        // Spawn new enemy from the right
-        if (now - lastSpawnTime > spawnIntervalMs && enemyIdleSheet.width > 0 && enemyIdleSheet.height > 0) {
+        // Quản lý số lượng quái: đảm bảo tối thiểu và thay thế ngay khi bị tiêu diệt, tối đa 3
+        val aliveBefore = enemies.count { !it.isDestroyed }
+        if (aliveBefore < minEnemiesAtStart && enemyIdleSheet.width > 0 && enemyIdleSheet.height > 0) {
             spawnEnemy()
-            lastSpawnTime = now
+        } else if (aliveBefore < previousAliveEnemies && aliveBefore < maxEnemies) {
+            spawnEnemy()
         }
 
         // Update positions and check collisions
@@ -316,12 +345,26 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
         for (enemy in enemies) {
             if (enemy.isDestroyed) continue
-            // Nếu đang tấn công thì không cập nhật vị trí (đứng im)
+            // Di chuyển ngang một hướng cố định, wrap khi qua rìa
             if (enemy.state != Enemy.State.ATTACK) {
-                val prevMovingLeft = enemy.movingLeft
-                enemy.update()
-                if (enemy.movingLeft != prevMovingLeft) {
-                    enemy.facingLeft = enemy.movingLeft
+                val speed = enemy.speedPxPerFrame
+                if (enemy.movingLeft) {
+                    enemy.x -= speed
+                    enemy.facingLeft = true
+                } else {
+                    enemy.x += speed
+                    enemy.facingLeft = false
+                }
+
+                val spriteWidth = enemyFrameWidth * enemyScale
+                val quickOffset = spriteWidth * 0.25f
+                // Nếu ra khỏi rìa trái, xuất hiện bên phải (vào nhanh hơn một chút)
+                if (enemy.x + spriteWidth < 0f) {
+                    enemy.x = width.toFloat() - quickOffset
+                }
+                // Nếu ra khỏi rìa phải, xuất hiện bên trái (vào nhanh hơn một chút)
+                if (enemy.x > width.toFloat()) {
+                    enemy.x = -spriteWidth + quickOffset
                 }
             }
 
@@ -349,7 +392,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 val looping = enemy.state == Enemy.State.ATTACK || enemy.state == Enemy.State.MOVE
                 if (looping) {
                     enemy.currentFrame = (enemy.currentFrame + 1) % enemyColumns
-                    if (enemy.currentFrame == 0) enemy.dealtDamageThisAttack = false
+                    if (enemy.currentFrame == 0) {
+                        if (enemy.state == Enemy.State.ATTACK) enemy.attackReady = true
+                        enemy.dealtDamageThisAttack = false
+                    }
                 } else {
                     enemy.currentFrame = 0
                 }
@@ -357,20 +403,30 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             }
 
             // Enemy attacks on contact
-//            getEnemyHitboxInto(enemy, enemyHitboxRect)
+            getEnemyHitboxInto(enemy, enemyHitboxRect)
             if (RectF.intersects(playerBoxRect, enemyHitboxRect)) {
-                val canDamage = if (enemy.state == Enemy.State.ATTACK) !enemy.dealtDamageThisAttack else now - lastHitTime > hitCooldownMs
+                val canDamage = if (enemy.state == Enemy.State.ATTACK) (enemy.attackReady && !enemy.dealtDamageThisAttack) else now - lastHitTime > hitCooldownMs
                 if (canDamage) {
                     playerHealth = (playerHealth - 1).coerceAtLeast(0)
                     lastHitTime = now
-                    println("Player bị tấn công! Máu còn: $playerHealth")
-                    if (enemy.state == Enemy.State.ATTACK) enemy.dealtDamageThisAttack = true
+                    Log.d(TAG, "Player bị tấn công! Máu còn: $playerHealth")
+                    if (enemy.state == Enemy.State.ATTACK) {
+                        enemy.dealtDamageThisAttack = true
+                        enemy.attackReady = false
+                    }
                 }
             }
         }
 
-        // Remove off-screen or destroyed enemies
-        enemies.removeAll { it.isDestroyed || it.x + (enemyFrameWidth * enemyScale) < 0 }
+        // Remove destroyed enemies, giữ lại để wrap-around khi ra khỏi màn hình
+        enemies.removeAll { it.isDestroyed }
+
+        // Nếu ít hơn tối đa, có thể spawn thêm để đạt tối đa 3 khi muốn
+        val aliveAfter = enemies.count { !it.isDestroyed }
+        if (aliveAfter < maxEnemies && aliveAfter < minEnemiesAtStart) {
+            spawnEnemy()
+        }
+        previousAliveEnemies = enemies.count { !it.isDestroyed }
     }
 
     // ==================== CONTROL ====================
@@ -383,16 +439,18 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     }
 
     fun attack() {
+        Log.d(TAG, "attack: 1111")
         isAttacking = true
         currentFrame = 0
+        playerAttackApplied = false
         val characterBox = RectF(
             characterX,
             characterY,
             characterX + runFrameWidth * scale,
             characterY + runFrameHeight * scale
         )
-        checkItemCollision(characterBox)
-        checkEnemyHit(characterBox)
+//        checkItemCollision(characterBox)
+        // Không gây sát thương ngay; damage sẽ áp dụng khi animation kết thúc (playerPendingAttack)
 
         postDelayed({ isAttacking = false }, 500)
     }
@@ -402,18 +460,28 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         for (item in items) {
             if (!item.isDestroyed && RectF.intersects(characterBox, item.getBoundingBox())) {
                 item.isDestroyed = true
-                println("Item ${item.id} bị phá hủy!")
+                Log.d(TAG, "Item ${item.id} bị phá hủy!")
             }
         }
     }
 
     private fun checkEnemyHit(characterBox: RectF) {
+        val killed = ArrayList<Enemy>()
         for (enemy in enemies) {
-//            getEnemyHitboxInto(enemy, enemyHitboxRect)
-            if (!enemy.isDestroyed && RectF.intersects(characterBox, enemyHitboxRect)) {
-                enemy.isDestroyed = true
-                println("Quái vật ${enemy.id} bị tiêu diệt!")
+            getEnemyHitboxInto(enemy, enemyHitboxRect)
+            if (RectF.intersects(characterBox, enemyHitboxRect)) {
+                enemy.health = (enemy.health - 1).coerceAtLeast(0)
+                if (enemy.health == 0) {
+                    killed.add(enemy)
+                }
             }
+        }
+        if (killed.isNotEmpty()) {
+            enemies.removeAll(killed)
+            // Spawn replacements immediately up to maxEnemies
+            val canSpawn = (maxEnemies - enemies.size).coerceAtLeast(0)
+            val toSpawn = minOf(canSpawn, killed.size)
+            repeat(toSpawn) { spawnEnemy() }
         }
     }
 
@@ -433,18 +501,15 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         val maxY = (height - enemyFrameHeight * enemyScale).coerceAtLeast(0f)
         val spawnX = (0..maxX.toInt()).random().toFloat()
         val spawnY = (0..maxY.toInt()).random().toFloat()
-        val patrolDistance = (enemyFrameWidth * enemyScale * 3).toInt().coerceAtLeast(30) // ~3 frame widths
         val enemy = Enemy(
             id = "enemy_${System.currentTimeMillis()}",
             x = spawnX,
             y = spawnY,
             bitmap = enemyIdleSheet,
-            speedPxPerFrame = 2.5f
+            speedPxPerFrame = 2.5f,
+            health = 4
         )
-        enemy.patrolLeftBound = (spawnX - patrolDistance).coerceAtLeast(0f)
-        enemy.patrolRightBound = (spawnX + patrolDistance).coerceAtMost(maxX)
         enemy.movingLeft = listOf(true, false).random()
         enemies.add(enemy)
-        // Debug log removed to avoid jank
     }
 }

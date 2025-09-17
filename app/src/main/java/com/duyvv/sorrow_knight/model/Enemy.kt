@@ -11,7 +11,9 @@ data class Enemy(
     var speedPxPerFrame: Float = 3f,
     var isDestroyed: Boolean = false,
     var attackDamage: Int = 1,
-    var canDealDamage: Boolean = true
+    var canDealDamage: Boolean = true,
+    var health: Int = 3,
+    var attackReady: Boolean = false
 ) {
     fun getBoundingBox(): RectF {
         return RectF(x, y, x + bitmap.width, y + bitmap.height)
