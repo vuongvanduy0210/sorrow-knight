@@ -22,14 +22,14 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
     // ==================== SPRITE ====================
     // Run sprite
-    private val runSprite = BitmapFactory.decodeResource(resources, R.drawable.warrior_run)
+    private val runSprite = BitmapFactory.decodeResource(resources, R.drawable.archer_run)
     private val runTotalFrames = 6
     private val runFrameWidth = runSprite.width / runTotalFrames
     private val runFrameHeight = runSprite.height
 
     // Attack sprite
-    private val attackSprite = BitmapFactory.decodeResource(resources, R.drawable.warrior_attack)
-    private val attackTotalFrames = 4
+    private val attackSprite = BitmapFactory.decodeResource(resources, R.drawable.archer_attack)
+    private val attackTotalFrames = 8
     private val attackFrameWidth = attackSprite.width / attackTotalFrames
     private val attackFrameHeight = attackSprite.height
 
@@ -40,8 +40,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
     // ==================== STATE ====================
     private var isAttacking = false
-    private var playerPendingAttack = false
-    private var playerAttackApplied = false
+    private var hasFiredArrowThisAttack = false
     private var isMoving = false
 
     // Vị trí nhân vật
@@ -75,6 +74,22 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private val enemyDstRect = RectF()
     private val playerBoxRect = RectF()
     private val enemyHitboxRect = RectF()
+
+    // ==================== PROJECTILES ====================
+    private data class Arrow(
+        var x: Float,
+        var y: Float,
+        val speedPxPerFrame: Float,
+        val movingLeft: Boolean
+    )
+    private val arrows = mutableListOf<Arrow>()
+    private val arrowBitmap: Bitmap by lazy { BitmapFactory.decodeResource(resources, R.drawable.arrow) }
+    private val arrowScale = 0.5f
+    private var arrowSpeedPxPerFrameDefault = 18f
+
+    fun setArrowSpeed(speedPxPerFrame: Float) {
+        arrowSpeedPxPerFrameDefault = speedPxPerFrame
+    }
 
     // ==================== DIRECTION ====================
     enum class Direction { UP, DOWN, LEFT, RIGHT }
@@ -125,21 +140,11 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         updateCharacterState()
         updateAnimationFrame()
         updateEnemies()
-
-        // Apply player attack damage only after animation completes
-        if (playerPendingAttack) {
-            val characterBox = RectF(
-                characterX,
-                characterY,
-                characterX + runFrameWidth * scale,
-                characterY + runFrameHeight * scale
-            )
-            checkEnemyHit(characterBox)
-            playerPendingAttack = false
-        }
+        updateArrows()
 
 //        drawItems(canvas)
         drawEnemies(canvas)
+        drawArrows(canvas)
         drawCharacter(canvas)
 
         postInvalidateOnAnimation()
@@ -207,6 +212,26 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 }
             } else {
                 canvas.drawBitmap(sheet, enemySrcRect, enemyDstRect, paint)
+            }
+        }
+    }
+
+    private fun drawArrows(canvas: Canvas) {
+        if (arrowBitmap.width <= 0 || arrowBitmap.height <= 0) return
+        for (arrow in arrows) {
+            val left = arrow.x
+            val top = arrow.y
+            val right = arrow.x + arrowBitmap.width * arrowScale
+            val bottom = arrow.y + arrowBitmap.height * arrowScale
+            dstRect.set(left, top, right, bottom)
+
+            val centerX = dstRect.centerX()
+            if (arrow.movingLeft) {
+                canvas.withScale(-1f, 1f, centerX, dstRect.centerY()) {
+                    drawBitmap(arrowBitmap, null, dstRect, paint)
+                }
+            } else {
+                canvas.drawBitmap(arrowBitmap, null, dstRect, paint)
             }
         }
     }
@@ -312,11 +337,23 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 val total = if (isAttacking) attackTotalFrames else runTotalFrames
                 currentFrame = (currentFrame + 1) % total
                 frameTimer = now
-                // Gây sát thương khi đạt tới frame thứ 3 (0-based index 3)
-                val attackHitFrameIndex = 3
-                if (isAttacking && currentFrame == attackHitFrameIndex && !playerAttackApplied) {
-                    playerPendingAttack = true
-                    playerAttackApplied = true
+                // Bắn mũi tên ở frame 6 (0-based)
+                val attackHitFrameIndex = 6
+                if (isAttacking && !hasFiredArrowThisAttack) {
+                    // Spawn arrow aligned to character vertical center
+                    val arrowStartX = if (facingLeft) characterX else characterX + runFrameWidth * scale - (arrowBitmap.width * arrowScale) * 0.25f
+                    val playerCenterY = characterY + (runFrameHeight * scale) / 2f
+                    val arrowHeight = arrowBitmap.height * arrowScale
+                    val arrowStartY = playerCenterY - arrowHeight / 2f
+                    arrows.add(
+                        Arrow(
+                            x = arrowStartX,
+                            y = arrowStartY,
+                            speedPxPerFrame = arrowSpeedPxPerFrameDefault,
+                            movingLeft = facingLeft
+                        )
+                    )
+                    hasFiredArrowThisAttack = true
                 }
             }
         } else {
@@ -429,6 +466,40 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         previousAliveEnemies = enemies.count { !it.isDestroyed }
     }
 
+    private fun updateArrows() {
+        if (arrowBitmap.width <= 0 || arrowBitmap.height <= 0) return
+        val iterator = arrows.iterator()
+        while (iterator.hasNext()) {
+            val arrow = iterator.next()
+            val dx = if (arrow.movingLeft) -arrow.speedPxPerFrame else arrow.speedPxPerFrame
+            arrow.x += dx
+
+            // Remove when off-screen
+            if (arrow.x + arrowBitmap.width * arrowScale < 0f || arrow.x > width) {
+                iterator.remove()
+                continue
+            }
+
+            // Check collision with enemies
+            val arrowRect = RectF(
+                arrow.x,
+                arrow.y,
+                arrow.x + arrowBitmap.width * arrowScale,
+                arrow.y + arrowBitmap.height * arrowScale
+            )
+            for (enemy in enemies) {
+                if (enemy.isDestroyed) continue
+                getEnemyHitboxInto(enemy, enemyHitboxRect)
+                if (RectF.intersects(arrowRect, enemyHitboxRect)) {
+                    enemy.health = (enemy.health - 1).coerceAtLeast(0)
+                    if (enemy.health == 0) enemy.isDestroyed = true
+                    iterator.remove()
+                    break
+                }
+            }
+        }
+    }
+
     // ==================== CONTROL ====================
     fun startMoving(direction: Direction) {
         movingDirection = direction
@@ -442,7 +513,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         Log.d(TAG, "attack: 1111")
         isAttacking = true
         currentFrame = 0
-        playerAttackApplied = false
+        hasFiredArrowThisAttack = false
         val characterBox = RectF(
             characterX,
             characterY,
