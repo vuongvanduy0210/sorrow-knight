@@ -1,16 +1,22 @@
 package com.duyvv.sorrow_knight
 
 import android.annotation.SuppressLint
+import android.net.Uri
 import android.os.Bundle
 import android.view.MotionEvent
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
+import androidx.media3.exoplayer.ExoPlayer
 import com.duyvv.sorrow_knight.databinding.ActivityGameBinding
 import com.duyvv.sorrow_knight.ui.GameView
+import androidx.core.net.toUri
+import androidx.media3.common.MediaItem
 
 class GameActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityGameBinding
+
+    private var player: ExoPlayer? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -19,6 +25,17 @@ class GameActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         setupControls()
+
+        playSound()
+    }
+
+    private fun playSound() {
+        player = ExoPlayer.Builder(this).build()
+        val rawUri = "android.resource://${packageName}/${R.raw.rainbowlaser}".toUri()
+        val mediaItem = MediaItem.fromUri(rawUri)
+        player?.setMediaItem(mediaItem)
+        player?.prepare()
+        player?.playWhenReady = true
     }
 
     private fun setupControls() {
@@ -47,5 +64,25 @@ class GameActivity : AppCompatActivity() {
                 else -> false
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (player?.isPlaying == false) {
+            player?.play()
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (player?.isPlaying == true) {
+            player?.pause()
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        player?.release()
+        player = null
     }
 }
