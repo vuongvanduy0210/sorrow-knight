@@ -8,7 +8,6 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
-import android.net.Uri
 import android.util.AttributeSet
 import android.util.Log
 import android.view.View
@@ -19,6 +18,7 @@ import com.duyvv.sorrow_knight.R
 import com.duyvv.sorrow_knight.model.Enemy
 import com.duyvv.sorrow_knight.model.MapItem
 import androidx.core.net.toUri
+import androidx.media3.common.Player
 
 class GameView(context: Context, attrs: AttributeSet? = null) : View(context, attrs) {
 
@@ -98,7 +98,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     }
 
     // ==================== AUDIO ====================
-    private var exoPlayer: ExoPlayer? = null
+    private var attackPlayer: ExoPlayer? = null
     private var hitSoundPlayer: ExoPlayer? = null
 
     // ==================== DIRECTION ====================
@@ -146,14 +146,26 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     }
 
     private fun initAudio() {
-        exoPlayer = ExoPlayer.Builder(context).build()
-        hitSoundPlayer = ExoPlayer.Builder(context).build()
+        attackPlayer = ExoPlayer.Builder(context).build().apply {
+            val mediaItem = MediaItem.fromUri("android.resource://${context.packageName}/${R.raw.pew}".toUri())
+            setMediaItem(mediaItem)
+            prepare()
+            playWhenReady = false
+            repeatMode = Player.REPEAT_MODE_OFF
+        }
+        hitSoundPlayer = ExoPlayer.Builder(context).build().apply {
+            val mediaItem = MediaItem.fromUri("android.resource://${context.packageName}/${R.raw.hit}".toUri())
+            setMediaItem(mediaItem)
+            prepare()
+            playWhenReady = false
+            repeatMode = Player.REPEAT_MODE_OFF
+        }
     }
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
-        exoPlayer?.release()
-        exoPlayer = null
+        attackPlayer?.release()
+        attackPlayer = null
         hitSoundPlayer?.release()
         hitSoundPlayer = null
     }
@@ -627,12 +639,8 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
     private fun playAttackSound() {
         try {
-            exoPlayer?.let { player ->
-                val mediaItem = MediaItem.fromUri("android.resource://${context.packageName}/${R.raw.pew}".toUri())
-                player.setMediaItem(mediaItem)
-                player.prepare()
-                player.play()
-            }
+            attackPlayer?.seekTo(0)
+            attackPlayer?.play()
         } catch (e: Exception) {
             Log.e(TAG, "Error playing attack sound", e)
         }
@@ -640,12 +648,8 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
     private fun playWallHitSound() {
         try {
-            hitSoundPlayer?.let { player ->
-                val mediaItem = MediaItem.fromUri("android.resource://${context.packageName}/${R.raw.hit}".toUri())
-                player.setMediaItem(mediaItem)
-                player.prepare()
-                player.play()
-            }
+            hitSoundPlayer?.seekTo(0)
+            hitSoundPlayer?.play()
         } catch (e: Exception) {
             Log.e(TAG, "Error playing wall hit sound", e)
         }
