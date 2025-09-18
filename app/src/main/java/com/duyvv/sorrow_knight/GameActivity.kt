@@ -11,6 +11,7 @@ import com.duyvv.sorrow_knight.databinding.ActivityGameBinding
 import com.duyvv.sorrow_knight.ui.GameView
 import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 
 class GameActivity : AppCompatActivity() {
 
@@ -25,17 +26,18 @@ class GameActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         setupControls()
-
         playSound()
     }
 
     private fun playSound() {
-        player = ExoPlayer.Builder(this).build()
-        val rawUri = "android.resource://${packageName}/${R.raw.rainbowlaser}".toUri()
-        val mediaItem = MediaItem.fromUri(rawUri)
-        player?.setMediaItem(mediaItem)
-        player?.prepare()
-        player?.playWhenReady = true
+        player = ExoPlayer.Builder(this).build().apply {
+            val rawUri = "android.resource://${packageName}/${R.raw.rainbowlaser}".toUri()
+            val mediaItem = MediaItem.fromUri(rawUri)
+            setMediaItem(mediaItem)
+            prepare()
+            playWhenReady = true
+            repeatMode = Player.REPEAT_MODE_ONE
+        }
     }
 
     private fun setupControls() {
