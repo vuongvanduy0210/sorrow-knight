@@ -37,6 +37,7 @@ class GameActivity : AppCompatActivity() {
             prepare()
             playWhenReady = true
             repeatMode = Player.REPEAT_MODE_ONE
+            volume = 0.1f
         }
     }
 

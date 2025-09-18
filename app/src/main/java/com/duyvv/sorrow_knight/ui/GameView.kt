@@ -8,13 +8,17 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
+import android.net.Uri
 import android.util.AttributeSet
 import android.util.Log
 import android.view.View
 import androidx.core.graphics.withScale
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
 import com.duyvv.sorrow_knight.R
 import com.duyvv.sorrow_knight.model.Enemy
 import com.duyvv.sorrow_knight.model.MapItem
+import androidx.core.net.toUri
 
 class GameView(context: Context, attrs: AttributeSet? = null) : View(context, attrs) {
 
@@ -42,6 +46,8 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private var isAttacking = false
     private var hasFiredArrowThisAttack = false
     private var isMoving = false
+    private var lastWallHitTime = 0L
+    private val wallHitCooldownMs = 200L
 
     // Vị trí nhân vật
     private var characterX = 0f
@@ -91,6 +97,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         arrowSpeedPxPerFrameDefault = speedPxPerFrame
     }
 
+    // ==================== AUDIO ====================
+    private var exoPlayer: ExoPlayer? = null
+    private var hitSoundPlayer: ExoPlayer? = null
+
     // ==================== DIRECTION ====================
     enum class Direction { UP, DOWN, LEFT, RIGHT }
     private var movingDirection: Direction? = null
@@ -132,6 +142,20 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             if (enemyIdleSheet.width > 0 && enemyIdleSheet.height > 0) spawnEnemy()
         }
         previousAliveEnemies = enemies.count { !it.isDestroyed }
+        initAudio()
+    }
+
+    private fun initAudio() {
+        exoPlayer = ExoPlayer.Builder(context).build()
+        hitSoundPlayer = ExoPlayer.Builder(context).build()
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        exoPlayer?.release()
+        exoPlayer = null
+        hitSoundPlayer?.release()
+        hitSoundPlayer = null
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -308,6 +332,9 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         isMoving = movingDirection != null
 
         movingDirection?.let { dir ->
+            val oldX = characterX
+            val oldY = characterY
+            
             when (dir) {
                 Direction.UP -> characterY -= speed
                 Direction.DOWN -> characterY += speed
@@ -322,11 +349,24 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 }
             }
 
-            // Giới hạn trong màn hình
+            // Giới hạn trong màn hình và phát âm thanh khi chạm tường
             val maxX = width - runFrameWidth * scale
             val maxY = height - runFrameHeight * scale
-            characterX = characterX.coerceIn(0f, maxX)
-            characterY = characterY.coerceIn(0f, maxY)
+            val newX = characterX.coerceIn(0f, maxX)
+            val newY = characterY.coerceIn(0f, maxY)
+            
+            // Kiểm tra xem có chạm tường không
+            val hitWall = (newX != characterX) || (newY != characterY)
+            if (hitWall) {
+                val now = System.currentTimeMillis()
+                if (now - lastWallHitTime > wallHitCooldownMs) {
+                    playWallHitSound()
+                    lastWallHitTime = now
+                }
+            }
+            
+            characterX = newX
+            characterY = newY
         }
     }
 
@@ -354,6 +394,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                         )
                     )
                     hasFiredArrowThisAttack = true
+                    playAttackSound()
                 }
             }
         } else {
@@ -582,5 +623,31 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         )
         enemy.movingLeft = listOf(true, false).random()
         enemies.add(enemy)
+    }
+
+    private fun playAttackSound() {
+        try {
+            exoPlayer?.let { player ->
+                val mediaItem = MediaItem.fromUri("android.resource://${context.packageName}/${R.raw.pew}".toUri())
+                player.setMediaItem(mediaItem)
+                player.prepare()
+                player.play()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error playing attack sound", e)
+        }
+    }
+
+    private fun playWallHitSound() {
+        try {
+            hitSoundPlayer?.let { player ->
+                val mediaItem = MediaItem.fromUri("android.resource://${context.packageName}/${R.raw.hit}".toUri())
+                player.setMediaItem(mediaItem)
+                player.prepare()
+                player.play()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error playing wall hit sound", e)
+        }
     }
 }
