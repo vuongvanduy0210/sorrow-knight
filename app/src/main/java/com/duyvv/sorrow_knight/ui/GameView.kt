@@ -100,6 +100,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     // ==================== AUDIO ====================
     private var attackPlayer: ExoPlayer? = null
     private var hitSoundPlayer: ExoPlayer? = null
+    private var isEnabledSound = true
 
     // ==================== DIRECTION ====================
     enum class Direction { UP, DOWN, LEFT, RIGHT }
@@ -145,7 +146,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         initAudio()
     }
 
-    private fun initAudio() {
+    fun initAudio() {
         attackPlayer = ExoPlayer.Builder(context).build().apply {
             val mediaItem = MediaItem.fromUri("android.resource://${context.packageName}/${R.raw.pew}".toUri())
             setMediaItem(mediaItem)
@@ -638,6 +639,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     }
 
     private fun playAttackSound() {
+        if (!isEnabledSound) return
         try {
             attackPlayer?.seekTo(0)
             attackPlayer?.play()
@@ -647,11 +649,16 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     }
 
     private fun playWallHitSound() {
+        if (!isEnabledSound) return
         try {
             hitSoundPlayer?.seekTo(0)
             hitSoundPlayer?.play()
         } catch (e: Exception) {
             Log.e(TAG, "Error playing wall hit sound", e)
         }
+    }
+
+    fun toggleSound(isEnabled: Boolean) {
+        isEnabledSound = isEnabled
     }
 }

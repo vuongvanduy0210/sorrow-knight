@@ -50,6 +50,18 @@ class GameActivity : AppCompatActivity() {
         binding.btnAttack.setOnClickListener {
             binding.gameView.attack()
         }
+
+        binding.switchSoundEffect.setOnCheckedChangeListener { _, isChecked ->
+            binding.gameView.toggleSound(isChecked)
+        }
+
+        binding.switchSoundBackground.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) {
+                player?.play()
+            } else {
+                player?.pause()
+            }
+        }
     }
 
     @SuppressLint("ClickableViewAccessibility")

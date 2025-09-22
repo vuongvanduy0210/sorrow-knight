@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    xmlns:app="http://schemas.android.com/apk/res-auto">
+    android:layout_height="match_parent">
 
     <!-- Scrolling background -->
     <com.duyvv.sorrow_knight.ui.ScrollingBackgroundView
@@ -21,9 +21,10 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|center_horizontal"
+        android:gravity="center_horizontal"
         android:orientation="vertical"
         android:padding="16dp"
-        android:gravity="center_horizontal">
+        app:layout_constraintBottom_toBottomOf="@+id/scrollingBackground">
 
         <Button
             android:id="@+id/btnUp"
@@ -34,9 +35,9 @@
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
             android:layout_marginTop="8dp"
-            android:gravity="center">
+            android:gravity="center"
+            android:orientation="horizontal">
 
             <Button
                 android:id="@+id/btnLeft"
@@ -70,9 +71,34 @@
         android:id="@+id/btnAttack"
         android:layout_width="80dp"
         android:layout_height="80dp"
-        android:text="Attack"
         android:layout_gravity="bottom|end"
         android:layout_margin="24dp"
         android:backgroundTint="#D32F2F"
-        android:textColor="#FFFFFF" />
-</FrameLayout>
+        android:text="Attack"
+        android:textColor="#FFFFFF"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <androidx.appcompat.widget.SwitchCompat
+        android:id="@+id/switchSoundEffect"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="10dp"
+        android:checked="true"
+        android:thumb="@drawable/thumb"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/switchSoundBackground"
+        app:layout_constraintStart_toStartOf="parent"
+        app:track="@drawable/track" />
+
+    <androidx.appcompat.widget.SwitchCompat
+        android:id="@+id/switchSoundBackground"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="10dp"
+        android:checked="true"
+        android:thumb="@drawable/thumb"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:track="@drawable/track" />
+</androidx.constraintlayout.widget.ConstraintLayout>
