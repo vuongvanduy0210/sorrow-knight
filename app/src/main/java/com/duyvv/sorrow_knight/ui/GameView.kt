@@ -322,10 +322,12 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             }
 
             // Draw enemy health bar above sprite
-            val hbWidth = enemyDstRect.width() * 0.6f
+            val hbWidth = enemyDstRect.width() * 0.3f
             val hbHeight = 8f
             val hbLeft = enemyDstRect.centerX() - hbWidth / 2f
-            val hbTop = enemyDstRect.top - hbHeight
+            // Tính vị trí đầu thực tế (bỏ qua padding)
+            val actualHeadTop = enemyDstRect.top + (cfg.paddingVertical * cfg.scale)
+            val hbTop = actualHeadTop - hbHeight + 30f
             val hbRight = hbLeft + hbWidth
             val hbBottom = hbTop + hbHeight
             canvas.drawRect(hbLeft, hbTop, hbRight, hbBottom, healthBarBgPaint)
@@ -422,7 +424,9 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         val hbWidth = dstRect.width() * 0.6f
         val hbHeight = 10f
         val hbLeft = dstRect.centerX() - hbWidth / 2f
-        val hbTop = dstRect.top - hbHeight
+        // Tính vị trí đầu thực tế (bỏ qua padding)
+        val actualHeadTop = dstRect.top + (paddingVertical * scale)
+        val hbTop = actualHeadTop - hbHeight - 10f
         val hbRight = hbLeft + hbWidth
         val hbBottom = hbTop + hbHeight
         canvas.drawRect(hbLeft, hbTop, hbRight, hbBottom, healthBarBgPaint)
