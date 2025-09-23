@@ -52,7 +52,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     // Vị trí nhân vật
     private var characterX = 0f
     private var characterY = 0f
-    private val speed = 16f
+    private val speed = 7f
     private val scale = 0.25f
 
     // Hướng nhân vật (quay mặt)
@@ -111,21 +111,71 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
     // ==================== ENEMIES ====================
     private val enemies = mutableListOf<Enemy>()
-    // Mỗi sheet gồm 6 frame trên 1 hàng
-    private val enemyIdleSheet: Bitmap by lazy { BitmapFactory.decodeResource(resources, R.drawable.torch_idle) }
-    private val enemyMoveSheet: Bitmap by lazy { BitmapFactory.decodeResource(resources, R.drawable.torch_move) }
-    private val enemyAttackSheet: Bitmap by lazy { BitmapFactory.decodeResource(resources, R.drawable.torch_attack) }
-    private val enemyColumns = 6
-    private val enemyFrameWidth: Int by lazy { enemyIdleSheet.width / enemyColumns }
-    private val enemyFrameHeight: Int by lazy { enemyIdleSheet.height }
-    private val enemyFrameDuration = 120L
-    private val enemyScale = 0.5f
-    private val enemyPaddingHorizontal = 0
-    private val enemyPaddingVertical = 0
+
+    private data class EnemyAnimConfig(
+        val idleSheet: Bitmap,
+        val moveSheet: Bitmap,
+        val attackSheet: Bitmap,
+        val idleColumns: Int,
+        val moveColumns: Int,
+        val attackColumns: Int,
+        val frameDurationMs: Long,
+        val scale: Float,
+        val paddingHorizontal: Int = 0,
+        val paddingVertical: Int = 0,
+        val hitboxInsetXRatio: Float = 0.25f,
+        val hitboxInsetYRatio: Float = 0.30f
+    )
+
+    private val torchConfig: EnemyAnimConfig by lazy {
+        EnemyAnimConfig(
+            idleSheet = BitmapFactory.decodeResource(resources, R.drawable.torch_idle),
+            moveSheet = BitmapFactory.decodeResource(resources, R.drawable.torch_move),
+            attackSheet = BitmapFactory.decodeResource(resources, R.drawable.torch_attack),
+            idleColumns = 6,
+            moveColumns = 6,
+            attackColumns = 6,
+            frameDurationMs = 120L,
+            scale = 0.5f
+        )
+    }
+
+    private val warriorConfig: EnemyAnimConfig by lazy {
+        EnemyAnimConfig(
+            idleSheet = BitmapFactory.decodeResource(resources, R.drawable.warrior_run), // dùng run làm idle
+            moveSheet = BitmapFactory.decodeResource(resources, R.drawable.warrior_run),
+            attackSheet = BitmapFactory.decodeResource(resources, R.drawable.warrior_attack),
+            idleColumns = 6,
+            moveColumns = 6,
+            attackColumns = 4,
+            frameDurationMs = 110L,
+            scale = 0.5f
+        )
+    }
+
+    private val tntConfig: EnemyAnimConfig by lazy {
+        EnemyAnimConfig(
+            idleSheet = BitmapFactory.decodeResource(resources, R.drawable.tnt_idle),
+            moveSheet = BitmapFactory.decodeResource(resources, R.drawable.tnt_run),
+            attackSheet = BitmapFactory.decodeResource(resources, R.drawable.tnt_attack),
+            idleColumns = 6,
+            moveColumns = 6,
+            attackColumns = 7,
+            frameDurationMs = 120L,
+            scale = 0.5f
+        )
+    }
+
+    private fun getConfig(type: Enemy.Type): EnemyAnimConfig = when (type) {
+        Enemy.Type.TORCH -> torchConfig
+        Enemy.Type.WARRIOR -> warriorConfig
+        Enemy.Type.TNT -> tntConfig
+    }
+
     private var lastSpawnTime = 0L
     private val spawnIntervalMs = 100000L
     private val maxEnemies = 3
-    private val minEnemiesAtStart = 1
+    private val minEnemiesAtStart = 3
     private var previousAliveEnemies = 0
 
     // Player state (simple health and hit cooldown)
@@ -137,11 +187,11 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         setupCharacterPosition(h)
-        // Spawn 3 enemies at game start
+        // Spawn đúng 3 quái: Torch, Warrior, TNT
         enemies.clear()
-        repeat(3) {
-            if (enemyIdleSheet.width > 0 && enemyIdleSheet.height > 0) spawnEnemy()
-        }
+        spawnEnemy(Enemy.Type.TORCH)
+        spawnEnemy(Enemy.Type.WARRIOR)
+        spawnEnemy(Enemy.Type.TNT)
         previousAliveEnemies = enemies.count { !it.isDestroyed }
         initAudio()
     }
@@ -216,25 +266,26 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private fun drawEnemies(canvas: Canvas) {
         for (enemy in enemies) {
             if (enemy.isDestroyed) continue
-            val sheet = when (enemy.state) {
-                Enemy.State.ATTACK -> enemyAttackSheet
-                Enemy.State.MOVE -> enemyMoveSheet
-                else -> enemyIdleSheet
+            val cfg = getConfig(enemy.type)
+            val (sheet, columns) = when (enemy.state) {
+                Enemy.State.ATTACK -> cfg.attackSheet to cfg.attackColumns
+                Enemy.State.MOVE -> cfg.moveSheet to cfg.moveColumns
+                else -> cfg.idleSheet to cfg.idleColumns
             }
             val frame = enemy.currentFrame
-            val fw = sheet.width / enemyColumns
+            val fw = sheet.width / columns
             val fh = sheet.height
-            val srcLeft = frame * fw + enemyPaddingHorizontal
-            val srcTop = 0 + enemyPaddingVertical
-            val srcRight = (frame + 1) * fw - enemyPaddingHorizontal
-            val srcBottom = fh - enemyPaddingVertical
+            val srcLeft = frame * fw + cfg.paddingHorizontal
+            val srcTop = 0 + cfg.paddingVertical
+            val srcRight = (frame + 1) * fw - cfg.paddingHorizontal
+            val srcBottom = fh - cfg.paddingVertical
             enemySrcRect.set(srcLeft, srcTop, srcRight, srcBottom)
 
             enemyDstRect.set(
                 enemy.x,
                 enemy.y,
-                enemy.x + fw * enemyScale,
-                enemy.y + fh * enemyScale
+                enemy.x + fw * cfg.scale,
+                enemy.y + fh * cfg.scale
             )
 
             // Vẽ hitbox quái để debug
@@ -420,10 +471,14 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
         // Quản lý số lượng quái: đảm bảo tối thiểu và thay thế ngay khi bị tiêu diệt, tối đa 3
         val aliveBefore = enemies.count { !it.isDestroyed }
-        if (aliveBefore < minEnemiesAtStart && enemyIdleSheet.width > 0 && enemyIdleSheet.height > 0) {
-            spawnEnemy()
+        if (aliveBefore < minEnemiesAtStart) {
+            // Bổ sung các loại thiếu để đủ 3 loại khác nhau
+            val existingTypes = enemies.filter { !it.isDestroyed }.map { it.type }.toMutableSet()
+            if (!existingTypes.contains(Enemy.Type.TORCH)) spawnEnemy(Enemy.Type.TORCH)
+            if (!existingTypes.contains(Enemy.Type.WARRIOR)) spawnEnemy(Enemy.Type.WARRIOR)
+            if (!existingTypes.contains(Enemy.Type.TNT)) spawnEnemy(Enemy.Type.TNT)
         } else if (aliveBefore < previousAliveEnemies && aliveBefore < maxEnemies) {
-            spawnEnemy()
+            // Trường hợp có kẻ địch bị diệt, sẽ respawn cùng loại đó trong checkEnemyHit
         }
 
         // Update positions and check collisions
@@ -447,7 +502,9 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                     enemy.facingLeft = false
                 }
 
-                val spriteWidth = enemyFrameWidth * enemyScale
+                val cfgMove = getConfig(enemy.type)
+                val fwMove = (cfgMove.moveSheet.width / cfgMove.moveColumns)
+                val spriteWidth = fwMove * cfgMove.scale
                 val quickOffset = spriteWidth * 0.25f
                 // Nếu ra khỏi rìa trái, xuất hiện bên phải (vào nhanh hơn một chút)
                 if (enemy.x + spriteWidth < 0f) {
@@ -460,14 +517,17 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             }
 
             // Khoảng cách theo cả X và Y
-            val enemyCenterX = enemy.x + (enemyFrameWidth * enemyScale) / 2f
-            val enemyCenterY = enemy.y + (enemyFrameHeight * enemyScale) / 2f
+            val cfgForRange = getConfig(enemy.type)
+            val fwRange = (cfgForRange.moveSheet.width / cfgForRange.moveColumns)
+            val fhRange = cfgForRange.moveSheet.height
+            val enemyCenterX = enemy.x + (fwRange * cfgForRange.scale) / 2f
+            val enemyCenterY = enemy.y + (fhRange * cfgForRange.scale) / 2f
             val playerCenterX = characterX + (runFrameWidth * scale) / 2f
             val playerCenterY = characterY + (runFrameHeight * scale) / 2f
             val distX = kotlin.math.abs(playerCenterX - enemyCenterX)
             val distY = kotlin.math.abs(playerCenterY - enemyCenterY)
-            val attackRangeX = enemyFrameWidth * enemyScale * 0.6f
-            val attackRangeY = enemyFrameHeight * enemyScale * 0.6f
+            val attackRangeX = fwRange * cfgForRange.scale * 0.6f
+            val attackRangeY = fhRange * cfgForRange.scale * 0.6f
 
             // Xác định state
             val shouldAttack = distX < attackRangeX && distY < attackRangeY
@@ -479,10 +539,17 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             }
 
             // Cập nhật frame animation
-            if (now - enemy.frameTimerMs > enemyFrameDuration) {
+            val cfgForAnim = getConfig(enemy.type)
+            val duration = cfgForAnim.frameDurationMs
+            if (now - enemy.frameTimerMs > duration) {
                 val looping = enemy.state == Enemy.State.ATTACK || enemy.state == Enemy.State.MOVE
                 if (looping) {
-                    enemy.currentFrame = (enemy.currentFrame + 1) % enemyColumns
+                    val columns = when (enemy.state) {
+                        Enemy.State.ATTACK -> cfgForAnim.attackColumns
+                        Enemy.State.MOVE -> cfgForAnim.moveColumns
+                        else -> cfgForAnim.idleColumns
+                    }
+                    enemy.currentFrame = (enemy.currentFrame + 1) % columns
                     if (enemy.currentFrame == 0) {
                         if (enemy.state == Enemy.State.ATTACK) enemy.attackReady = true
                         enemy.dealtDamageThisAttack = false
@@ -515,7 +582,11 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         // Nếu ít hơn tối đa, có thể spawn thêm để đạt tối đa 3 khi muốn
         val aliveAfter = enemies.count { !it.isDestroyed }
         if (aliveAfter < maxEnemies && aliveAfter < minEnemiesAtStart) {
-            spawnEnemy()
+            // Bổ sung những loại còn thiếu
+            val existingTypes = enemies.filter { !it.isDestroyed }.map { it.type }.toMutableSet()
+            if (!existingTypes.contains(Enemy.Type.TORCH)) spawnEnemy(Enemy.Type.TORCH)
+            if (!existingTypes.contains(Enemy.Type.WARRIOR)) spawnEnemy(Enemy.Type.WARRIOR)
+            if (!existingTypes.contains(Enemy.Type.TNT)) spawnEnemy(Enemy.Type.TNT)
         }
         previousAliveEnemies = enemies.count { !it.isDestroyed }
     }
@@ -606,32 +677,44 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             // Spawn replacements immediately up to maxEnemies
             val canSpawn = (maxEnemies - enemies.size).coerceAtLeast(0)
             val toSpawn = minOf(canSpawn, killed.size)
-            repeat(toSpawn) { spawnEnemy() }
+            repeat(toSpawn) { index ->
+                val typeToRespawn = killed.getOrNull(index)?.type ?: Enemy.Type.TORCH
+                spawnEnemy(typeToRespawn)
+            }
         }
     }
 
     private fun getEnemyHitboxInto(enemy: Enemy, outRect: RectF) {
-        val insetX = (enemyFrameWidth * enemyScale) * 0.25f
-        val insetY = (enemyFrameHeight * enemyScale) * 0.30f
+        val cfg = getConfig(enemy.type)
+        val fw = (cfg.moveSheet.width / cfg.moveColumns)
+        val fh = cfg.moveSheet.height
+        val widthScaled = fw * cfg.scale
+        val heightScaled = fh * cfg.scale
+        val insetX = widthScaled * cfg.hitboxInsetXRatio
+        val insetY = heightScaled * cfg.hitboxInsetYRatio
         outRect.set(
             enemy.x + insetX,
             enemy.y + insetY,
-            enemy.x + enemyFrameWidth * enemyScale - insetX,
-            enemy.y + enemyFrameHeight * enemyScale - insetY
+            enemy.x + widthScaled - insetX,
+            enemy.y + heightScaled - insetY
         )
     }
 
-    private fun spawnEnemy() {
-        val maxX = (width - enemyFrameWidth * enemyScale).coerceAtLeast(0f)
-        val maxY = (height - enemyFrameHeight * enemyScale).coerceAtLeast(0f)
+    private fun spawnEnemy(type: Enemy.Type) {
+        val cfg = getConfig(type)
+        val frameWidth = cfg.moveSheet.width / cfg.moveColumns
+        val frameHeight = cfg.moveSheet.height
+        val maxX = (width - frameWidth * cfg.scale).coerceAtLeast(0f)
+        val maxY = (height - frameHeight * cfg.scale).coerceAtLeast(0f)
         val spawnX = (0..maxX.toInt()).random().toFloat()
         val spawnY = (0..maxY.toInt()).random().toFloat()
         val enemy = Enemy(
             id = "enemy_${System.currentTimeMillis()}",
             x = spawnX,
             y = spawnY,
-            bitmap = enemyIdleSheet,
-            speedPxPerFrame = 2.5f,
+            bitmap = cfg.idleSheet,
+            type = type,
+            speedPxPerFrame = 10f,
             health = 4
         )
         enemy.movingLeft = listOf(true, false).random()

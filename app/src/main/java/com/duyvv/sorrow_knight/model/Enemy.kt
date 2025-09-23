@@ -8,6 +8,7 @@ data class Enemy(
     var x: Float,
     var y: Float,
     val bitmap: Bitmap,
+    var type: Type = Type.TORCH,
     var speedPxPerFrame: Float = 3f,
     var isDestroyed: Boolean = false,
     var attackDamage: Int = 1,
@@ -44,6 +45,7 @@ data class Enemy(
 
     // Animation/state for sprite-sheet
     enum class State { IDLE, MOVE, ATTACK }
+    enum class Type { TORCH, WARRIOR, TNT }
     var state: State = State.MOVE
     var currentFrame: Int = 0
     var frameTimerMs: Long = 0
