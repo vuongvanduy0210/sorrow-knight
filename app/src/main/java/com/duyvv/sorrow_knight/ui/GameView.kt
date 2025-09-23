@@ -75,6 +75,24 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         style = Paint.Style.FILL
     }
 
+    // Health bar paints
+    private val healthBarBgPaint = Paint().apply {
+        color = Color.argb(160, 60, 60, 60)
+        style = Paint.Style.FILL
+        isAntiAlias = true
+    }
+    private val healthBarFgPaint = Paint().apply {
+        color = Color.rgb(220, 20, 60)
+        style = Paint.Style.FILL
+        isAntiAlias = true
+    }
+    private val healthBarBorderPaint = Paint().apply {
+        color = Color.BLACK
+        style = Paint.Style.STROKE
+        strokeWidth = 2f
+        isAntiAlias = true
+    }
+
     // Temp rects to avoid per-frame allocations
     private val enemySrcRect = Rect()
     private val enemyDstRect = RectF()
@@ -180,6 +198,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
     // Player state (simple health and hit cooldown)
     private var playerHealth = 3
+    private var playerMaxHealth = 3
     private var lastHitTime = 0L
     private val hitCooldownMs = 800L
 
@@ -301,6 +320,19 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             } else {
                 canvas.drawBitmap(sheet, enemySrcRect, enemyDstRect, paint)
             }
+
+            // Draw enemy health bar above sprite
+            val hbWidth = enemyDstRect.width() * 0.6f
+            val hbHeight = 8f
+            val hbLeft = enemyDstRect.centerX() - hbWidth / 2f
+            val hbTop = enemyDstRect.top - hbHeight
+            val hbRight = hbLeft + hbWidth
+            val hbBottom = hbTop + hbHeight
+            canvas.drawRect(hbLeft, hbTop, hbRight, hbBottom, healthBarBgPaint)
+            val ratio = if (enemy.maxHealth > 0) enemy.health.toFloat() / enemy.maxHealth else 0f
+            val fgRight = hbLeft + hbWidth * ratio.coerceIn(0f, 1f)
+            canvas.drawRect(hbLeft, hbTop, fgRight, hbBottom, healthBarFgPaint)
+            canvas.drawRect(hbLeft, hbTop, hbRight, hbBottom, healthBarBorderPaint)
         }
     }
 
@@ -385,6 +417,19 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             canvas.drawBitmap(bitmap, srcRect, dstRect, paint)
         }
 //        drawHitbox(canvas)
+
+        // Draw player health bar above player
+        val hbWidth = dstRect.width() * 0.6f
+        val hbHeight = 10f
+        val hbLeft = dstRect.centerX() - hbWidth / 2f
+        val hbTop = dstRect.top - hbHeight
+        val hbRight = hbLeft + hbWidth
+        val hbBottom = hbTop + hbHeight
+        canvas.drawRect(hbLeft, hbTop, hbRight, hbBottom, healthBarBgPaint)
+        val playerRatio = if (playerMaxHealth > 0) playerHealth.toFloat() / playerMaxHealth else 0f
+        val fgRight = hbLeft + hbWidth * playerRatio.coerceIn(0f, 1f)
+        canvas.drawRect(hbLeft, hbTop, fgRight, hbBottom, healthBarFgPaint)
+        canvas.drawRect(hbLeft, hbTop, hbRight, hbBottom, healthBarBorderPaint)
     }
 
     private fun drawHitbox(canvas: Canvas) {
@@ -715,7 +760,8 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             bitmap = cfg.idleSheet,
             type = type,
             speedPxPerFrame = 10f,
-            health = 4
+            health = 4,
+            maxHealth = 4
         )
         enemy.movingLeft = listOf(true, false).random()
         enemies.add(enemy)

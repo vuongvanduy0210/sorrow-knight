@@ -14,6 +14,7 @@ data class Enemy(
     var attackDamage: Int = 1,
     var canDealDamage: Boolean = true,
     var health: Int = 3,
+    var maxHealth: Int = 3,
     var attackReady: Boolean = false
 ) {
     fun getBoundingBox(): RectF {
