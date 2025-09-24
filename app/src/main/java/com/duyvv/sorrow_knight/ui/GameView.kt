@@ -580,11 +580,22 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
             // Xác định state
             val shouldAttack = distX < attackRangeX && distY < attackRangeY
-            if (shouldAttack) {
-                enemy.state = Enemy.State.ATTACK
-                enemy.facingLeft = playerCenterX < enemyCenterX
+            
+            // Nếu đang tấn công, phải hoàn thành animation trước khi thay đổi hành động
+            if (enemy.state == Enemy.State.ATTACK) {
+                // Giữ nguyên trạng thái ATTACK cho đến khi animation kết thúc
+                if (shouldAttack) {
+                    enemy.facingLeft = playerCenterX < enemyCenterX
+                }
+                // Không thay đổi state, đợi animation hoàn thành
             } else {
-                enemy.state = Enemy.State.MOVE
+                // Chỉ thay đổi hành động khi không đang tấn công
+                if (shouldAttack) {
+                    enemy.state = Enemy.State.ATTACK
+                    enemy.facingLeft = playerCenterX < enemyCenterX
+                } else {
+                    enemy.state = Enemy.State.MOVE
+                }
             }
 
             // Cập nhật frame animation
@@ -600,7 +611,11 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                     }
                     enemy.currentFrame = (enemy.currentFrame + 1) % columns
                     if (enemy.currentFrame == 0) {
-                        if (enemy.state == Enemy.State.ATTACK) enemy.attackReady = true
+                        if (enemy.state == Enemy.State.ATTACK) {
+                            enemy.attackReady = true
+                            // Hoàn thành animation tấn công, chuyển về MOVE
+                            enemy.state = Enemy.State.MOVE
+                        }
                         enemy.dealtDamageThisAttack = false
                     }
                 } else {
@@ -664,12 +679,12 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             for (enemy in enemies) {
                 if (enemy.isDestroyed) continue
                 getEnemyHitboxInto(enemy, enemyHitboxRect)
-                if (RectF.intersects(arrowRect, enemyHitboxRect)) {
-                    enemy.health = (enemy.health - 1).coerceAtLeast(0)
-                    if (enemy.health == 0) enemy.isDestroyed = true
-                    iterator.remove()
-                    break
-                }
+            if (RectF.intersects(arrowRect, enemyHitboxRect)) {
+                enemy.health = (enemy.health - 1).coerceAtLeast(0)
+                if (enemy.health == 0) enemy.isDestroyed = true
+                iterator.remove()
+                break
+            }
             }
         }
     }
