@@ -41,14 +41,37 @@ class GameActivity : AppCompatActivity() {
         }
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     private fun setupControls() {
         setupHoldButton(binding.btnUp, GameView.Direction.UP)
         setupHoldButton(binding.btnDown, GameView.Direction.DOWN)
         setupHoldButton(binding.btnLeft, GameView.Direction.LEFT)
         setupHoldButton(binding.btnRight, GameView.Direction.RIGHT)
 
-        binding.btnAttack.setOnClickListener {
-            binding.gameView.attack()
+        // Attack buttons
+        binding.btnAttackWarrior.setOnClickListener {
+            binding.gameView.attackWarrior()
+        }
+        binding.btnAttackArcher.setOnClickListener {
+            binding.gameView.attackArcher()
+        }
+        binding.btnAttackLancer.setOnClickListener {
+            binding.gameView.attackLancer()
+        }
+
+        // Guard button (hold to guard)
+        binding.btnGuard.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    binding.gameView.startGuarding()
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    binding.gameView.stopGuarding()
+                    true
+                }
+                else -> false
+            }
         }
 
         binding.switchSoundEffect.setOnCheckedChangeListener { _, isChecked ->

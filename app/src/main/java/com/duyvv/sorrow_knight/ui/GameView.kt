@@ -19,6 +19,7 @@ import com.duyvv.sorrow_knight.model.Enemy
 import com.duyvv.sorrow_knight.model.MapItem
 import androidx.core.net.toUri
 import androidx.media3.common.Player
+import kotlin.math.ceil
 
 class GameView(context: Context, attrs: AttributeSet? = null) : View(context, attrs) {
 
@@ -26,16 +27,31 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
     // ==================== SPRITE ====================
     // Run sprite
-    private val runSprite = BitmapFactory.decodeResource(resources, R.drawable.archer_run)
+    private val runSprite = BitmapFactory.decodeResource(resources, R.drawable.warrior_run)
     private val runTotalFrames = 6
     private val runFrameWidth = runSprite.width / runTotalFrames
     private val runFrameHeight = runSprite.height
 
-    // Attack sprite
+    // Attack sprite (archer)
     private val attackSprite = BitmapFactory.decodeResource(resources, R.drawable.archer_attack)
     private val attackTotalFrames = 8
     private val attackFrameWidth = attackSprite.width / attackTotalFrames
     private val attackFrameHeight = attackSprite.height
+    // Warrior attack sprite (melee)
+    private val warriorAttackSprite = BitmapFactory.decodeResource(resources, R.drawable.warrior_attack)
+    private val warriorAttackTotalFrames = 4
+    private val warriorAttackFrameWidth = warriorAttackSprite.width / warriorAttackTotalFrames
+    private val warriorAttackFrameHeight = warriorAttackSprite.height
+    // Lancer attack sprite (melee)
+    private val lancerAttackSprite = BitmapFactory.decodeResource(resources, R.drawable.lancer_attack)
+    private val lancerAttackTotalFrames = 3
+    private val lancerAttackFrameWidth = lancerAttackSprite.width / lancerAttackTotalFrames
+    private val lancerAttackFrameHeight = lancerAttackSprite.height
+    // Guard sprite
+    private val guardSprite = BitmapFactory.decodeResource(resources, R.drawable.warrior_guard)
+    private val guardTotalFrames = 6
+    private val guardFrameWidth = guardSprite.width / guardTotalFrames
+    private val guardFrameHeight = guardSprite.height
 
     // ==================== ANIMATION ====================
     private var currentFrame = 0
@@ -43,8 +59,12 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private val frameDuration = 120L // ms mỗi frame
 
     // ==================== STATE ====================
+    private enum class AttackType { NONE, WARRIOR, ARCHER, LANCER }
+    private var currentAttackType = AttackType.NONE
     private var isAttacking = false
     private var hasFiredArrowThisAttack = false
+    private var meleeDamageApplied = false
+    private var isGuarding = false
     private var isMoving = false
     private var lastWallHitTime = 0L
     private val wallHitCooldownMs = 200L
@@ -110,6 +130,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private val arrowBitmap: Bitmap by lazy { BitmapFactory.decodeResource(resources, R.drawable.arrow) }
     private val arrowScale = 0.5f
     private var arrowSpeedPxPerFrameDefault = 18f
+    private var damageArcher = 1
 
     fun setArrowSpeed(speedPxPerFrame: Float) {
         arrowSpeedPxPerFrameDefault = speedPxPerFrame
@@ -126,6 +147,15 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
     // ==================== ITEMS ====================
     private val items = mutableListOf<MapItem>()
+    // Droppable healing items
+    private val mushrooms = mutableListOf<MapItem>()
+    private val mushroomBitmap: Bitmap by lazy { BitmapFactory.decodeResource(resources, R.drawable.mushroom) }
+    private var mushroomHealAmount = 2f
+    private var mushroomDropChance = 1f
+    private val mushroomHitboxInsetXRatio = 1f
+    private val mushroomHitboxInsetYRatio = 1f
+    private val mushroomDrawWidthPx = 64f
+    private val mushroomDrawHeightPx = 64f
 
     // ==================== ENEMIES ====================
     private val enemies = mutableListOf<Enemy>()
@@ -158,14 +188,14 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         )
     }
 
-    private val warriorConfig: EnemyAnimConfig by lazy {
+    private val pawnConfig: EnemyAnimConfig by lazy {
         EnemyAnimConfig(
-            idleSheet = BitmapFactory.decodeResource(resources, R.drawable.warrior_run), // dùng run làm idle
-            moveSheet = BitmapFactory.decodeResource(resources, R.drawable.warrior_run),
-            attackSheet = BitmapFactory.decodeResource(resources, R.drawable.warrior_attack),
+            idleSheet = BitmapFactory.decodeResource(resources, R.drawable.pawn_run), // dùng run làm idle
+            moveSheet = BitmapFactory.decodeResource(resources, R.drawable.pawn_run),
+            attackSheet = BitmapFactory.decodeResource(resources, R.drawable.pawn_attack),
             idleColumns = 6,
             moveColumns = 6,
-            attackColumns = 4,
+            attackColumns = 6,
             frameDurationMs = 110L,
             scale = 0.5f
         )
@@ -186,7 +216,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
     private fun getConfig(type: Enemy.Type): EnemyAnimConfig = when (type) {
         Enemy.Type.TORCH -> torchConfig
-        Enemy.Type.WARRIOR -> warriorConfig
+        Enemy.Type.WARRIOR -> pawnConfig
         Enemy.Type.TNT -> tntConfig
     }
 
@@ -197,10 +227,13 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private var previousAliveEnemies = 0
 
     // Player state (simple health and hit cooldown)
-    private var playerHealth = 3
-    private var playerMaxHealth = 3
+    private var playerHealth = 10f
+    private var playerMaxHealth = 10f
     private var lastHitTime = 0L
     private val hitCooldownMs = 800L
+    private var damageWarrior = 2
+    private var damageLancer = 3
+    private var guardDamageMultiplier = 0.4f // nhận 40% sát thương khi đang thủ
 
     // ==================== Lifecycle ====================
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -247,11 +280,16 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         updateAnimationFrame()
         updateEnemies()
         updateArrows()
+        updateMushrooms()
 
 //        drawItems(canvas)
         drawEnemies(canvas)
         drawArrows(canvas)
+        drawMushrooms(canvas)
         drawCharacter(canvas)
+
+        // HUD
+        drawPlayerHealthHud(canvas)
 
         postInvalidateOnAnimation()
     }
@@ -279,6 +317,15 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             if (!item.isDestroyed) {
                 canvas.drawBitmap(item.bitmap, item.x, item.y, paint)
             }
+        }
+    }
+
+    private fun drawMushrooms(canvas: Canvas) {
+        if (mushroomBitmap.width <= 0 || mushroomBitmap.height <= 0) return
+        for (m in mushrooms) {
+            if (m.isDestroyed) continue
+            dstRect.set(m.x, m.y, m.x + mushroomDrawWidthPx, m.y + mushroomDrawHeightPx)
+            canvas.drawBitmap(m.bitmap, null, dstRect, paint)
         }
     }
 
@@ -366,19 +413,45 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
         when {
             isAttacking -> {
-                bitmap = attackSprite
-                frameWidth = attackFrameWidth
-                frameHeight = attackFrameHeight
-                totalFrames = attackTotalFrames
+                when (currentAttackType) {
+                    AttackType.ARCHER -> {
+                        bitmap = attackSprite
+                        frameWidth = attackFrameWidth
+                        frameHeight = attackFrameHeight
+                        totalFrames = attackTotalFrames
+                    }
+                    AttackType.WARRIOR -> {
+                        bitmap = warriorAttackSprite
+                        frameWidth = warriorAttackFrameWidth
+                        frameHeight = warriorAttackFrameHeight
+                        totalFrames = warriorAttackTotalFrames
+                    }
+                    AttackType.LANCER -> {
+                        bitmap = lancerAttackSprite
+                        frameWidth = lancerAttackFrameWidth
+                        frameHeight = lancerAttackFrameHeight
+                        totalFrames = lancerAttackTotalFrames
+                    }
+                    else -> {
+                        bitmap = attackSprite
+                        frameWidth = attackFrameWidth
+                        frameHeight = attackFrameHeight
+                        totalFrames = attackTotalFrames
+                    }
+                }
             }
-
+            isGuarding -> {
+                bitmap = guardSprite
+                frameWidth = guardFrameWidth
+                frameHeight = guardFrameHeight
+                totalFrames = guardTotalFrames
+            }
             isMoving -> {
                 bitmap = runSprite
                 frameWidth = runFrameWidth
                 frameHeight = runFrameHeight
                 totalFrames = runTotalFrames
             }
-
             else -> {
                 bitmap = runSprite
                 frameWidth = runFrameWidth
@@ -392,10 +465,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         val paddingVertical = 80
         val paddingHorizontal = 60
         srcRect.set(
-            currentFrame * frameWidth + paddingHorizontal, // paddingLeft: khoảng cách giữa các frame
-            paddingVertical, // paddingTop: khoảng cách giữa các frame (nếu có)
+            currentFrame * frameWidth + paddingHorizontal,
+            paddingVertical,
             (currentFrame + 1) * frameWidth - paddingHorizontal,
-            frameHeight - paddingVertical // paddingBottom: khoảng cách dưới cùng
+            frameHeight - paddingVertical
         )
 
         // Vị trí đích
@@ -406,38 +479,67 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             characterY + frameHeight * scale
         )
 
-        // Tính điểm giữa để lật ảnh
         val centerX = dstRect.centerX()
-
         if (facingLeft) {
-            // Lật ảnh ngang sang trái
             canvas.withScale(-1f, 1f, centerX, dstRect.centerY()) {
                 drawBitmap(bitmap, srcRect, dstRect, paint)
             }
         } else {
-            // Bình thường (mặt phải)
             canvas.drawBitmap(bitmap, srcRect, dstRect, paint)
         }
 //        drawHitbox(canvas)
 
-        // Draw player health bar above player
-        val hbWidth = dstRect.width() * 0.6f
-        val hbHeight = 10f
-        val hbLeft = dstRect.centerX() - hbWidth / 2f
-        // Tính vị trí đầu thực tế (bỏ qua padding)
-        val actualHeadTop = dstRect.top + (paddingVertical * scale)
-        val hbTop = actualHeadTop - hbHeight - 10f
-        val hbRight = hbLeft + hbWidth
-        val hbBottom = hbTop + hbHeight
-        canvas.drawRect(hbLeft, hbTop, hbRight, hbBottom, healthBarBgPaint)
-        val playerRatio = if (playerMaxHealth > 0) playerHealth.toFloat() / playerMaxHealth else 0f
-        val fgRight = hbLeft + hbWidth * playerRatio.coerceIn(0f, 1f)
-        canvas.drawRect(hbLeft, hbTop, fgRight, hbBottom, healthBarFgPaint)
-        canvas.drawRect(hbLeft, hbTop, hbRight, hbBottom, healthBarBorderPaint)
+        // Player health bar moved to HUD (top-left). See drawPlayerHealthHud.
     }
 
     private fun drawHitbox(canvas: Canvas) {
         canvas.drawRect(dstRect, hitboxPaint)
+    }
+
+    private fun drawPlayerHealthHud(canvas: Canvas) {
+        val padding = 16f
+        val hbWidth = width * 0.3f
+        val hbHeight = 16f
+        val hbLeft = padding
+        val hbTop = padding
+        val hbRight = hbLeft + hbWidth
+        val hbBottom = hbTop + hbHeight
+
+        canvas.drawRect(hbLeft, hbTop, hbRight, hbBottom, healthBarBgPaint)
+        val ratio = if (playerMaxHealth > 0f) playerHealth / playerMaxHealth else 0f
+        val fgRight = hbLeft + hbWidth * ratio.coerceIn(0f, 1f)
+        canvas.drawRect(hbLeft, hbTop, fgRight, hbBottom, healthBarFgPaint)
+        canvas.drawRect(hbLeft, hbTop, hbRight, hbBottom, healthBarBorderPaint)
+    }
+
+    private fun updateMushrooms() {
+        if (mushroomBitmap.width <= 0 || mushroomBitmap.height <= 0) return
+        // Player bounding box
+        playerBoxRect.set(
+            characterX,
+            characterY,
+            characterX + runFrameWidth * scale,
+            characterY + runFrameHeight * scale
+        )
+        for (m in mushrooms) {
+            if (m.isDestroyed) continue
+            // Smaller mushroom hitbox
+            val mw = mushroomDrawWidthPx
+            val mh = mushroomDrawHeightPx
+            val insetX = mw * mushroomHitboxInsetXRatio
+            val insetY = mh * mushroomHitboxInsetYRatio
+            val mushRect = RectF(
+                m.x + insetX,
+                m.y + insetY,
+                m.x + mw - insetX,
+                m.y + mh - insetY
+            )
+            if (RectF.intersects(playerBoxRect, mushRect)) {
+                m.isDestroyed = true
+                playerHealth = (playerHealth + mushroomHealAmount).coerceAtMost(playerMaxHealth)
+            }
+        }
+        mushrooms.removeAll { it.isDestroyed }
     }
 
     // ==================== UPDATE ====================
@@ -484,34 +586,108 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     }
 
     private fun updateAnimationFrame() {
+        if (isGuarding) {
+            val now = System.currentTimeMillis()
+            if (now - frameTimer > frameDuration) {
+                currentFrame = (currentFrame + 1) % guardTotalFrames
+                frameTimer = now
+            }
+            return
+        }
+
         if (isAttacking || isMoving) {
             val now = System.currentTimeMillis()
             if (now - frameTimer > frameDuration) {
-                val total = if (isAttacking) attackTotalFrames else runTotalFrames
+                val total = when {
+                    isAttacking && currentAttackType == AttackType.ARCHER -> attackTotalFrames
+                    isAttacking && currentAttackType == AttackType.WARRIOR -> warriorAttackTotalFrames
+                    isAttacking && currentAttackType == AttackType.LANCER -> lancerAttackTotalFrames
+                    else -> runTotalFrames
+                }
                 currentFrame = (currentFrame + 1) % total
                 frameTimer = now
-                // Bắn mũi tên ở frame 6 (0-based)
-                val attackHitFrameIndex = 6
-                if (isAttacking && !hasFiredArrowThisAttack) {
-                    // Spawn arrow aligned to character vertical center
-                    val arrowStartX = if (facingLeft) characterX else characterX + runFrameWidth * scale - (arrowBitmap.width * arrowScale) * 0.25f
-                    val playerCenterY = characterY + (runFrameHeight * scale) / 2f
-                    val arrowHeight = arrowBitmap.height * arrowScale
-                    val arrowStartY = playerCenterY - arrowHeight / 2f
-                    arrows.add(
-                        Arrow(
-                            x = arrowStartX,
-                            y = arrowStartY,
-                            speedPxPerFrame = arrowSpeedPxPerFrameDefault,
-                            movingLeft = facingLeft
+
+                // Archer: bắn tên ở frame 6
+                if (isAttacking && currentAttackType == AttackType.ARCHER) {
+                    val attackHitFrameIndex = 6
+                    if (!hasFiredArrowThisAttack) {
+                        val arrowStartX = if (facingLeft) characterX else characterX + runFrameWidth * scale - (arrowBitmap.width * arrowScale) * 0.25f
+                        val playerCenterY = characterY + (runFrameHeight * scale) / 2f
+                        val arrowHeight = arrowBitmap.height * arrowScale
+                        val arrowStartY = playerCenterY - arrowHeight / 2f
+                        arrows.add(
+                            Arrow(
+                                x = arrowStartX,
+                                y = arrowStartY,
+                                speedPxPerFrame = arrowSpeedPxPerFrameDefault,
+                                movingLeft = facingLeft
+                            )
                         )
-                    )
-                    hasFiredArrowThisAttack = true
-                    playAttackSound()
+                        hasFiredArrowThisAttack = true
+                        playAttackSound()
+                    }
+                    if (currentFrame == total - 1) {
+                        post { isAttacking = false; currentAttackType = AttackType.NONE }
+                    }
+                }
+
+                // Melee: gây sát thương ở frame 4
+                if (isAttacking && currentAttackType == AttackType.WARRIOR) {
+                    val hitFrame = 3
+                    if (!meleeDamageApplied && currentFrame == hitFrame) {
+                        applyMeleeDamage()
+                        meleeDamageApplied = true
+                    }
+                    if (currentFrame == total - 1) {
+                        post { isAttacking = false; currentAttackType = AttackType.NONE; meleeDamageApplied = false }
+                    }
+                }
+
+                if (isAttacking && currentAttackType == AttackType.LANCER) {
+                    val hitFrame = 2
+                    if (!meleeDamageApplied && currentFrame == hitFrame) {
+                        applyMeleeDamage()
+                        meleeDamageApplied = true
+                    }
+                    if (currentFrame == total - 1) {
+                        post { isAttacking = false; currentAttackType = AttackType.NONE; meleeDamageApplied = false }
+                    }
                 }
             }
         } else {
             currentFrame = 0
+        }
+    }
+
+    private fun applyMeleeDamage() {
+        val width = runFrameWidth * scale
+        val height = runFrameHeight * scale
+        val meleeWidth = width * 0.6f
+        val meleeHeight = height * 0.4f
+        val top = characterY + (height - meleeHeight) / 2f
+        val left = if (facingLeft) characterX - meleeWidth * 0.2f else characterX + width - meleeWidth * 0.8f
+        val rect = RectF(left, top, left + meleeWidth, top + meleeHeight)
+        // Apply melee damage depending on attack type
+        val killed = ArrayList<Enemy>()
+        for (enemy in enemies) {
+            if (enemy.isDestroyed) continue
+            getEnemyHitboxInto(enemy, enemyHitboxRect)
+            if (RectF.intersects(rect, enemyHitboxRect)) {
+                val dmg = if (currentAttackType == AttackType.LANCER) damageLancer else damageWarrior
+                enemy.health = (enemy.health - dmg).coerceAtLeast(0)
+                if (enemy.health == 0) killed.add(enemy)
+            }
+        }
+        if (killed.isNotEmpty()) {
+            // Drop mushrooms from killed enemies
+            killed.forEach { maybeDropMushroom(it) }
+            enemies.removeAll(killed)
+            val canSpawn = (maxEnemies - enemies.size).coerceAtLeast(0)
+            val toSpawn = minOf(canSpawn, killed.size)
+            repeat(toSpawn) { index ->
+                val typeToRespawn = killed.getOrNull(index)?.type ?: Enemy.Type.TORCH
+                spawnEnemy(typeToRespawn)
+            }
         }
     }
 
@@ -629,7 +805,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             if (RectF.intersects(playerBoxRect, enemyHitboxRect)) {
                 val canDamage = if (enemy.state == Enemy.State.ATTACK) (enemy.attackReady && !enemy.dealtDamageThisAttack) else now - lastHitTime > hitCooldownMs
                 if (canDamage) {
-                    playerHealth = (playerHealth - 1).coerceAtLeast(0)
+                    val incoming = 1f
+                    val actual = if (isGuarding) (incoming * guardDamageMultiplier).coerceAtLeast(0f) else incoming
+                    Log.d(TAG, "updateEnemies: $actual")
+                    playerHealth = (playerHealth - actual).coerceAtLeast(0f)
                     lastHitTime = now
                     Log.d(TAG, "Player bị tấn công! Máu còn: $playerHealth")
                     if (enemy.state == Enemy.State.ATTACK) {
@@ -680,8 +859,12 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 if (enemy.isDestroyed) continue
                 getEnemyHitboxInto(enemy, enemyHitboxRect)
             if (RectF.intersects(arrowRect, enemyHitboxRect)) {
-                enemy.health = (enemy.health - 1).coerceAtLeast(0)
-                if (enemy.health == 0) enemy.isDestroyed = true
+                // Archer damage
+                enemy.health = (enemy.health - damageArcher).coerceAtLeast(0)
+                if (enemy.health == 0) {
+                    enemy.isDestroyed = true
+                    maybeDropMushroom(enemy)
+                }
                 iterator.remove()
                 break
             }
@@ -698,21 +881,40 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         movingDirection = null
     }
 
-    fun attack() {
-        Log.d(TAG, "attack: 1111")
+    // Backward-compatible default attack -> Archer
+    fun attack() { attackArcher() }
+
+    fun attackWarrior() {
         isAttacking = true
+        currentAttackType = AttackType.WARRIOR
+        currentFrame = 0
+        meleeDamageApplied = false
+        postDelayed({ isAttacking = false; currentAttackType = AttackType.NONE }, 500)
+    }
+
+    fun attackArcher() {
+        isAttacking = true
+        currentAttackType = AttackType.ARCHER
         currentFrame = 0
         hasFiredArrowThisAttack = false
-        val characterBox = RectF(
-            characterX,
-            characterY,
-            characterX + runFrameWidth * scale,
-            characterY + runFrameHeight * scale
-        )
-//        checkItemCollision(characterBox)
-        // Không gây sát thương ngay; damage sẽ áp dụng khi animation kết thúc (playerPendingAttack)
+        postDelayed({ isAttacking = false; currentAttackType = AttackType.NONE }, 500)
+    }
 
-        postDelayed({ isAttacking = false }, 500)
+    fun attackLancer() {
+        isAttacking = true
+        currentAttackType = AttackType.LANCER
+        currentFrame = 0
+        meleeDamageApplied = false
+        postDelayed({ isAttacking = false; currentAttackType = AttackType.NONE }, 500)
+    }
+
+    fun startGuarding() {
+        isGuarding = true
+        currentFrame = 0
+    }
+
+    fun stopGuarding() {
+        isGuarding = false
     }
 
     // ==================== COLLISION ====================
@@ -764,6 +966,27 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         )
     }
 
+    private fun maybeDropMushroom(enemy: Enemy) {
+        if (mushroomBitmap.width <= 0 || mushroomBitmap.height <= 0) return
+        val roll = Math.random().toFloat()
+        if (roll <= mushroomDropChance) {
+            val dropX = (enemy.x + enemyDstRect.width() * 0.5f).coerceIn(0f,
+                (width - mushroomDrawWidthPx).coerceAtLeast(0f)
+            )
+            val dropY = (enemy.y + enemyDstRect.height() * 0.5f).coerceIn(0f,
+                (height - mushroomDrawHeightPx).coerceAtLeast(0f)
+            )
+            mushrooms.add(
+                MapItem(
+                    id = "mush_${System.currentTimeMillis()}",
+                    x = dropX,
+                    y = dropY,
+                    bitmap = mushroomBitmap
+                )
+            )
+        }
+    }
+
     private fun spawnEnemy(type: Enemy.Type) {
         val cfg = getConfig(type)
         val frameWidth = cfg.moveSheet.width / cfg.moveColumns
@@ -779,8 +1002,8 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             bitmap = cfg.idleSheet,
             type = type,
             speedPxPerFrame = 10f,
-            health = 4,
-            maxHealth = 4
+            health = 10,
+            maxHealth = 10
         )
         enemy.movingLeft = listOf(true, false).random()
         enemies.add(enemy)
