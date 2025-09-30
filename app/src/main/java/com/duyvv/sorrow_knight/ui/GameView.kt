@@ -1,6 +1,7 @@
 package com.duyvv.sorrow_knight.ui
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -14,6 +15,7 @@ import android.view.View
 import androidx.core.graphics.withScale
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
+import com.duyvv.sorrow_knight.GameOverActivity
 import com.duyvv.sorrow_knight.R
 import com.duyvv.sorrow_knight.model.Enemy
 import com.duyvv.sorrow_knight.model.MapItem
@@ -234,6 +236,9 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private var damageWarrior = 2
     private var damageLancer = 3
     private var guardDamageMultiplier = 0.4f // nhận 40% sát thương khi đang thủ
+    
+    // Game state
+    private var isGameOver = false
 
     // ==================== Lifecycle ====================
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -275,6 +280,18 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+
+        // Check for game over condition
+        if (playerHealth <= 0f && !isGameOver) {
+            isGameOver = true
+            showGameOverScreen()
+            return
+        }
+
+        // Don't update game if game is over
+        if (isGameOver) {
+            return
+        }
 
         updateCharacterState()
         updateAnimationFrame()
@@ -915,6 +932,46 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
     fun stopGuarding() {
         isGuarding = false
+    }
+
+    // ==================== GAME OVER ====================
+    private fun showGameOverScreen() {
+        val intent = Intent(context, GameOverActivity::class.java)
+        context.startActivity(intent)
+    }
+
+    fun resetGame() {
+        // Reset player state
+        playerHealth = playerMaxHealth
+        isGameOver = false
+        
+        // Reset character position
+        setupCharacterPosition(height)
+        
+        // Clear and respawn enemies
+        enemies.clear()
+        spawnEnemy(Enemy.Type.TORCH)
+        spawnEnemy(Enemy.Type.WARRIOR)
+        spawnEnemy(Enemy.Type.TNT)
+        previousAliveEnemies = enemies.count { !it.isDestroyed }
+        
+        // Clear arrows and mushrooms
+        arrows.clear()
+        mushrooms.clear()
+        
+        // Reset character state
+        isMoving = false
+        isAttacking = false
+        isGuarding = false
+        movingDirection = null
+        currentAttackType = AttackType.NONE
+        currentFrame = 0
+        lastHitTime = 0L
+        hasFiredArrowThisAttack = false
+        meleeDamageApplied = false
+        
+        // Restart the game loop
+        postInvalidateOnAnimation()
     }
 
     // ==================== COLLISION ====================

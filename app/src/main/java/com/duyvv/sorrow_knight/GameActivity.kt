@@ -27,6 +27,11 @@ class GameActivity : AppCompatActivity() {
 
         setupControls()
         playSound()
+        
+        // Check if we need to reset the game (from GameOver screen)
+        if (intent.getBooleanExtra("reset_game", false)) {
+            binding.gameView.resetGame()
+        }
     }
 
     private fun playSound() {
