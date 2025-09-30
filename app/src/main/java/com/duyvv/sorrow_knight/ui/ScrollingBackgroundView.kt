@@ -8,51 +8,52 @@ import android.graphics.Paint
 import android.util.AttributeSet
 import android.view.View
 import com.duyvv.sorrow_knight.R
-import androidx.core.graphics.withTranslation
 
-class ScrollingBackgroundView(context: Context, attrs: AttributeSet? = null) : View(context, attrs) {
+class ScrollingBackgroundView(context: Context, attrs: AttributeSet? = null) :
+    View(context, attrs) {
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { isFilterBitmap = true }
 
-    private val backgroundBitmap: Bitmap = BitmapFactory.decodeResource(resources, R.drawable.img_bg)
+    private val backgroundBitmap: Bitmap =
+        BitmapFactory.decodeResource(resources, R.drawable.img_bg)
 
-    // Scroll position in pixels (x axis)
+    // Scroll position
     private var scrollOffsetX = 0f
 
-    // Pixels per frame. Adjust for speed (device-independent by tying to frame time if needed)
+    // Speed
     private val pixelsPerFrame = 3f
+
+    private val srcRect = android.graphics.Rect()
+    private val dstRect = android.graphics.Rect()
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        if (backgroundBitmap.width <= 0 || backgroundBitmap.height <= 0) {
-            return
-        }
+        if (backgroundBitmap.width <= 0 || backgroundBitmap.height <= 0) return
 
-        // Scale background to match view height, keep aspect ratio, then tile horizontally
-        val scale = height.toFloat() / backgroundBitmap.height.toFloat()
-        val scaledWidth = (backgroundBitmap.width * scale).toInt()
-        val scaledHeight = height
+        // Vùng gốc của ảnh
+        srcRect.set(0, 0, backgroundBitmap.width, backgroundBitmap.height)
 
-        // How many tiles needed to cover the width plus one extra for scrolling gap
-        val tilesNeeded = if (scaledWidth == 0) 1 else (width / scaledWidth) + 2
+        // Vùng đích: full màn hình (fitXY)
+        dstRect.set(0, 0, width, height)
 
-        // Normalize offset to [0, scaledWidth)
-        val normalizedOffset = ((scrollOffsetX % scaledWidth) + scaledWidth) % scaledWidth
+        // Tính số tile cần để cover chiều ngang
+        val tilesNeeded = if (width == 0) 1 else 2
 
-        var startX = -normalizedOffset
+        // Normalize offset
+        val normalizedOffset = ((scrollOffsetX % width) + width) % width
+
+        var startX = -normalizedOffset.toInt()
         for (i in 0 until tilesNeeded) {
-            val left = startX + i * scaledWidth
-            canvas.withTranslation(left, 0f) {
-                scale(scale, scale)
-                drawBitmap(backgroundBitmap, 0f, 0f, paint)
-            }
+            val left = startX + i * width
+            dstRect.offsetTo(left, 0)
+            canvas.drawBitmap(backgroundBitmap, srcRect, dstRect, paint)
         }
 
-        // Advance scroll
+        // Update scroll
         scrollOffsetX += pixelsPerFrame
 
-        // Schedule next frame
+        // Vẽ frame tiếp theo
         postInvalidateOnAnimation()
     }
 }
