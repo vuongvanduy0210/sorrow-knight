@@ -3,18 +3,15 @@ package com.duyvv.sorrow_knight
 import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
+import com.duyvv.sorrow_knight.base.BaseActivity
 import com.duyvv.sorrow_knight.databinding.ActivityGameOverBinding
 
-class GameOverActivity : AppCompatActivity() {
+class GameOverActivity : BaseActivity<ActivityGameOverBinding>(
+    ActivityGameOverBinding::inflate
+) {
 
-    private lateinit var binding: ActivityGameOverBinding
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        
-        binding = ActivityGameOverBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-
+    override fun onViewBindingCreated(savedInstanceState: Bundle?) {
+        super.onViewBindingCreated(savedInstanceState)
         setupButtons()
     }
 

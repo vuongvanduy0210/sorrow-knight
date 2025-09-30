@@ -1,33 +1,28 @@
 package com.duyvv.sorrow_knight
 
 import android.annotation.SuppressLint
-import android.net.Uri
 import android.os.Bundle
 import android.view.MotionEvent
 import android.view.View
-import androidx.appcompat.app.AppCompatActivity
-import androidx.media3.exoplayer.ExoPlayer
-import com.duyvv.sorrow_knight.databinding.ActivityGameBinding
-import com.duyvv.sorrow_knight.ui.GameView
 import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import com.duyvv.sorrow_knight.base.BaseActivity
+import com.duyvv.sorrow_knight.databinding.ActivityGameBinding
+import com.duyvv.sorrow_knight.ui.GameView
 
-class GameActivity : AppCompatActivity() {
-
-    private lateinit var binding: ActivityGameBinding
+class GameActivity : BaseActivity<ActivityGameBinding>(
+    ActivityGameBinding::inflate
+) {
 
     private var player: ExoPlayer? = null
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
-        binding = ActivityGameBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-
+    override fun onViewBindingCreated(savedInstanceState: Bundle?) {
+        super.onViewBindingCreated(savedInstanceState)
         setupControls()
         playSound()
-        
+
         // Check if we need to reset the game (from GameOver screen)
         if (intent.getBooleanExtra("reset_game", false)) {
             binding.gameView.resetGame()
