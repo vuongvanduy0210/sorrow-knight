@@ -16,6 +16,7 @@ import androidx.core.graphics.withScale
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import com.duyvv.sorrow_knight.GameOverActivity
+import com.duyvv.sorrow_knight.VictoryActivity
 import com.duyvv.sorrow_knight.R
 import com.duyvv.sorrow_knight.model.Enemy
 import com.duyvv.sorrow_knight.model.MapItem
@@ -113,6 +114,15 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         style = Paint.Style.STROKE
         strokeWidth = 2f
         isAntiAlias = true
+    }
+    
+    // Text paint for HUD
+    private val hudTextPaint = Paint().apply {
+        color = Color.WHITE
+        textSize = 32f
+        isAntiAlias = true
+        typeface = android.graphics.Typeface.DEFAULT_BOLD
+        setShadowLayer(2f, 2f, 2f, Color.BLACK)
     }
 
     // Temp rects to avoid per-frame allocations
@@ -239,6 +249,12 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     
     // Game state
     private var isGameOver = false
+    
+    // Win condition tracking
+    private var enemiesKilled = 0
+    private val enemiesToWin = 2 // Số lượng quái cần tiêu diệt để thắng
+    private var gameStartTime = 0L
+    private var isGameWon = false
 
     // ==================== Lifecycle ====================
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -251,6 +267,11 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         spawnEnemy(Enemy.Type.TNT)
         previousAliveEnemies = enemies.count { !it.isDestroyed }
         initAudio()
+        
+        // Initialize game start time
+        gameStartTime = System.currentTimeMillis()
+        enemiesKilled = 0
+        isGameWon = false
     }
 
     fun initAudio() {
@@ -288,8 +309,15 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             return
         }
 
-        // Don't update game if game is over
-        if (isGameOver) {
+        // Check for win condition
+        if (enemiesKilled >= enemiesToWin && !isGameWon && !isGameOver) {
+            isGameWon = true
+            showVictoryScreen()
+            return
+        }
+
+        // Don't update game if game is over or won
+        if (isGameOver || isGameWon) {
             return
         }
 
@@ -307,6 +335,8 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
         // HUD
         drawPlayerHealthHud(canvas)
+        drawKillCountHud(canvas)
+        drawGameTimeHud(canvas)
 
         postInvalidateOnAnimation()
     }
@@ -528,6 +558,34 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         canvas.drawRect(hbLeft, hbTop, fgRight, hbBottom, healthBarFgPaint)
         canvas.drawRect(hbLeft, hbTop, hbRight, hbBottom, healthBarBorderPaint)
     }
+    
+    private fun drawKillCountHud(canvas: Canvas) {
+        val padding = 16f
+        val text = "Kills: $enemiesKilled/$enemiesToWin"
+        val textX = width - padding
+        val textY = padding + hudTextPaint.textSize
+        
+        // Draw text aligned to right
+        hudTextPaint.textAlign = Paint.Align.RIGHT
+        canvas.drawText(text, textX, textY, hudTextPaint)
+    }
+    
+    private fun drawGameTimeHud(canvas: Canvas) {
+        val padding = 16f
+        val currentTime = System.currentTimeMillis()
+        val elapsedTime = if (gameStartTime > 0) currentTime - gameStartTime else 0L
+        
+        val minutes = elapsedTime / 60000
+        val seconds = (elapsedTime % 60000) / 1000
+        val timeString = String.format("Time: %02d:%02d", minutes, seconds)
+        
+        val textX = width - padding
+        val textY = padding + hudTextPaint.textSize * 2 + 8f // Vị trí dưới kill count
+        
+        // Draw text aligned to right
+        hudTextPaint.textAlign = Paint.Align.RIGHT
+        canvas.drawText(timeString, textX, textY, hudTextPaint)
+    }
 
     private fun updateMushrooms() {
         if (mushroomBitmap.width <= 0 || mushroomBitmap.height <= 0) return
@@ -699,6 +757,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             // Drop mushrooms from killed enemies
             killed.forEach { maybeDropMushroom(it) }
             enemies.removeAll(killed)
+            
+            // Increase kill count
+            enemiesKilled += killed.size
+            
             val canSpawn = (maxEnemies - enemies.size).coerceAtLeast(0)
             val toSpawn = minOf(canSpawn, killed.size)
             repeat(toSpawn) { index ->
@@ -881,6 +943,8 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 if (enemy.health == 0) {
                     enemy.isDestroyed = true
                     maybeDropMushroom(enemy)
+                    // Increase kill count
+                    enemiesKilled++
                 }
                 iterator.remove()
                 break
@@ -939,11 +1003,24 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         val intent = Intent(context, GameOverActivity::class.java)
         context.startActivity(intent)
     }
+    
+    private fun showVictoryScreen() {
+        val gameTime = System.currentTimeMillis() - gameStartTime
+        val intent = Intent(context, VictoryActivity::class.java)
+        intent.putExtra("game_time", gameTime)
+        intent.putExtra("enemies_killed", enemiesKilled)
+        context.startActivity(intent)
+    }
 
     fun resetGame() {
         // Reset player state
         playerHealth = playerMaxHealth
         isGameOver = false
+        isGameWon = false
+        
+        // Reset win condition tracking
+        enemiesKilled = 0
+        gameStartTime = System.currentTimeMillis()
         
         // Reset character position
         setupCharacterPosition(height)

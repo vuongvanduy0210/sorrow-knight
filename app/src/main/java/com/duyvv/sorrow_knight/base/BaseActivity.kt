@@ -8,6 +8,7 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
+import androidx.activity.addCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.viewbinding.ViewBinding
 
@@ -24,6 +25,9 @@ abstract class BaseActivity<B : ViewBinding>(
             setContentView(root)
         }
         onViewBindingCreated(savedInstanceState)
+        onBackPressedDispatcher.addCallback(this) {
+
+        }
     }
 
     open fun onViewBindingCreated(savedInstanceState: Bundle?) {}

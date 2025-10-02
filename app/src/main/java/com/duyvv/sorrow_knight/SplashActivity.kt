@@ -16,9 +16,14 @@ class SplashActivity : BaseActivity<ActivitySplashBinding>(
 
     override fun onViewBindingCreated(savedInstanceState: Bundle?) {
         super.onViewBindingCreated(savedInstanceState)
-        binding.appName.setOnClickListener {
+        
+        binding.btnStartGame.setOnClickListener {
             startActivity(Intent(this, GameActivity::class.java))
             finish()
+        }
+        
+        binding.btnLeaderboard.setOnClickListener {
+            startActivity(Intent(this, LeaderboardActivity::class.java))
         }
     }
 }
