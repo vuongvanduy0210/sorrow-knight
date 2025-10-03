@@ -64,11 +64,11 @@ class GameActivity : BaseActivity<ActivityGameBinding>(
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     binding.gameView.startGuarding()
-                    true
+                    false
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     binding.gameView.stopGuarding()
-                    true
+                    false
                 }
                 else -> false
             }
@@ -93,11 +93,11 @@ class GameActivity : BaseActivity<ActivityGameBinding>(
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     binding.gameView.startMoving(direction)
-                    true
+                    false
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     binding.gameView.stopMoving()
-                    true
+                    false
                 }
                 else -> false
             }

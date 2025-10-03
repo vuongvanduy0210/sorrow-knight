@@ -115,6 +115,11 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         strokeWidth = 2f
         isAntiAlias = true
     }
+    private val damageFlashPaint = Paint().apply {
+        color = Color.argb(0, 255, 0, 0)
+        style = Paint.Style.FILL
+        isAntiAlias = true
+    }
     
     // Text paint for HUD
     private val hudTextPaint = Paint().apply {
@@ -130,6 +135,8 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private val enemyDstRect = RectF()
     private val playerBoxRect = RectF()
     private val enemyHitboxRect = RectF()
+    private var lastDamageFlashAt = 0L
+    private val damageFlashDurationMs = 220L
 
     // ==================== PROJECTILES ====================
     private data class Arrow(
@@ -164,13 +171,32 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private val mushroomBitmap: Bitmap by lazy { BitmapFactory.decodeResource(resources, R.drawable.mushroom) }
     private var mushroomHealAmount = 2f
     private var mushroomDropChance = 1f
-    private val mushroomHitboxInsetXRatio = 1f
-    private val mushroomHitboxInsetYRatio = 1f
+    private val mushroomHitboxInsetXRatio = 0.18f
+    private val mushroomHitboxInsetYRatio = 0.22f
     private val mushroomDrawWidthPx = 64f
     private val mushroomDrawHeightPx = 64f
 
     // ==================== ENEMIES ====================
     private val enemies = mutableListOf<Enemy>()
+
+    // ==================== LEVELS ====================
+    private data class LevelConfig(
+        val name: String,
+        val killTarget: Int,
+        val maxEnemies: Int,
+        val enemySpeedMultiplier: Float,
+        val dropBonus: Float
+    )
+    private val levels = listOf(
+        LevelConfig(name = "Ruins - Patrol", killTarget = 5, maxEnemies = 3, enemySpeedMultiplier = 1.0f, dropBonus = 1.0f),
+        LevelConfig(name = "Graveyard - Stir", killTarget = 8, maxEnemies = 4, enemySpeedMultiplier = 1.1f, dropBonus = 1.1f),
+        LevelConfig(name = "Crypt - Assault", killTarget = 10, maxEnemies = 5, enemySpeedMultiplier = 1.2f, dropBonus = 1.2f)
+    )
+    private var currentLevelIndex = 0
+    private val currentLevel: LevelConfig
+        get() = levels[currentLevelIndex]
+    private var killsThisLevel = 0
+    private fun effectiveMaxEnemies(): Int = currentLevel.maxEnemies
 
     private data class EnemyAnimConfig(
         val idleSheet: Bitmap,
@@ -252,7 +278,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     
     // Win condition tracking
     private var enemiesKilled = 0
-    private val enemiesToWin = 2 // Số lượng quái cần tiêu diệt để thắng
+    private val enemiesToWin = 2 // (unused after levels) giữ để tương thích nhưng không còn dùng để thắng
     private var gameStartTime = 0L
     private var isGameWon = false
 
@@ -272,6 +298,8 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         gameStartTime = System.currentTimeMillis()
         enemiesKilled = 0
         isGameWon = false
+        currentLevelIndex = 0
+        killsThisLevel = 0
     }
 
     fun initAudio() {
@@ -309,9 +337,15 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             return
         }
 
-        // Check for win condition
-        if (enemiesKilled >= enemiesToWin && !isGameWon && !isGameOver) {
-            isGameWon = true
+        // Level progression and win condition
+        if (!isGameOver && !isGameWon && killsThisLevel >= currentLevel.killTarget) {
+            advanceLevel()
+            if (isGameWon) {
+                showVictoryScreen()
+                return
+            }
+        }
+        if (isGameWon && !isGameOver) {
             showVictoryScreen()
             return
         }
@@ -337,6 +371,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         drawPlayerHealthHud(canvas)
         drawKillCountHud(canvas)
         drawGameTimeHud(canvas)
+        drawLevelHud(canvas)
+
+        // Damage flash overlay
+        drawDamageFlash(canvas)
 
         postInvalidateOnAnimation()
     }
@@ -587,6 +625,28 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         canvas.drawText(timeString, textX, textY, hudTextPaint)
     }
 
+    private fun drawLevelHud(canvas: Canvas) {
+        val padding = 16f
+        val name = currentLevel.name
+        val progress = "${killsThisLevel}/${currentLevel.killTarget}"
+        val text = "$name  |  $progress"
+        hudTextPaint.textAlign = Paint.Align.LEFT
+        val x = padding
+        val y = padding + hudTextPaint.textSize * 2 + 8f
+        canvas.drawText(text, x, y, hudTextPaint)
+    }
+
+    private fun drawDamageFlash(canvas: Canvas) {
+        val now = System.currentTimeMillis()
+        val elapsed = now - lastDamageFlashAt
+        if (elapsed in 0..damageFlashDurationMs) {
+            val t = 1f - (elapsed.toFloat() / damageFlashDurationMs.toFloat())
+            val alpha = (t * 160).toInt().coerceIn(0, 160) // peak 160 alpha
+            damageFlashPaint.color = Color.argb(alpha, 255, 0, 0)
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), damageFlashPaint)
+        }
+    }
+
     private fun updateMushrooms() {
         if (mushroomBitmap.width <= 0 || mushroomBitmap.height <= 0) return
         // Player bounding box
@@ -760,6 +820,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             
             // Increase kill count
             enemiesKilled += killed.size
+            killsThisLevel += killed.size
             
             val canSpawn = (maxEnemies - enemies.size).coerceAtLeast(0)
             val toSpawn = minOf(canSpawn, killed.size)
@@ -781,7 +842,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             if (!existingTypes.contains(Enemy.Type.TORCH)) spawnEnemy(Enemy.Type.TORCH)
             if (!existingTypes.contains(Enemy.Type.WARRIOR)) spawnEnemy(Enemy.Type.WARRIOR)
             if (!existingTypes.contains(Enemy.Type.TNT)) spawnEnemy(Enemy.Type.TNT)
-        } else if (aliveBefore < previousAliveEnemies && aliveBefore < maxEnemies) {
+        } else if (aliveBefore < previousAliveEnemies && aliveBefore < effectiveMaxEnemies()) {
             // Trường hợp có kẻ địch bị diệt, sẽ respawn cùng loại đó trong checkEnemyHit
         }
 
@@ -797,7 +858,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             if (enemy.isDestroyed) continue
             // Di chuyển ngang một hướng cố định, wrap khi qua rìa
             if (enemy.state != Enemy.State.ATTACK) {
-                val speed = enemy.speedPxPerFrame
+                val speed = enemy.speedPxPerFrame * currentLevel.enemySpeedMultiplier
                 if (enemy.movingLeft) {
                     enemy.x -= speed
                     enemy.facingLeft = true
@@ -889,6 +950,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                     Log.d(TAG, "updateEnemies: $actual")
                     playerHealth = (playerHealth - actual).coerceAtLeast(0f)
                     lastHitTime = now
+                    lastDamageFlashAt = now
                     Log.d(TAG, "Player bị tấn công! Máu còn: $playerHealth")
                     if (enemy.state == Enemy.State.ATTACK) {
                         enemy.dealtDamageThisAttack = true
@@ -903,7 +965,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
         // Nếu ít hơn tối đa, có thể spawn thêm để đạt tối đa 3 khi muốn
         val aliveAfter = enemies.count { !it.isDestroyed }
-        if (aliveAfter < maxEnemies && aliveAfter < minEnemiesAtStart) {
+        if (aliveAfter < effectiveMaxEnemies() && aliveAfter < minEnemiesAtStart) {
             // Bổ sung những loại còn thiếu
             val existingTypes = enemies.filter { !it.isDestroyed }.map { it.type }.toMutableSet()
             if (!existingTypes.contains(Enemy.Type.TORCH)) spawnEnemy(Enemy.Type.TORCH)
@@ -945,6 +1007,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                     maybeDropMushroom(enemy)
                     // Increase kill count
                     enemiesKilled++
+                    killsThisLevel++
                 }
                 iterator.remove()
                 break
@@ -1009,6 +1072,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         val intent = Intent(context, VictoryActivity::class.java)
         intent.putExtra("game_time", gameTime)
         intent.putExtra("enemies_killed", enemiesKilled)
+        intent.putExtra("levels_cleared", currentLevelIndex + if (killsThisLevel >= currentLevel.killTarget) 1 else 0)
         context.startActivity(intent)
     }
 
@@ -1020,6 +1084,8 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         
         // Reset win condition tracking
         enemiesKilled = 0
+        currentLevelIndex = 0
+        killsThisLevel = 0
         gameStartTime = System.currentTimeMillis()
         
         // Reset character position
@@ -1075,7 +1141,9 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         if (killed.isNotEmpty()) {
             enemies.removeAll(killed)
             // Spawn replacements immediately up to maxEnemies
-            val canSpawn = (maxEnemies - enemies.size).coerceAtLeast(0)
+            enemiesKilled += killed.size
+            killsThisLevel += killed.size
+            val canSpawn = (effectiveMaxEnemies() - enemies.size).coerceAtLeast(0)
             val toSpawn = minOf(canSpawn, killed.size)
             repeat(toSpawn) { index ->
                 val typeToRespawn = killed.getOrNull(index)?.type ?: Enemy.Type.TORCH
@@ -1103,7 +1171,8 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private fun maybeDropMushroom(enemy: Enemy) {
         if (mushroomBitmap.width <= 0 || mushroomBitmap.height <= 0) return
         val roll = Math.random().toFloat()
-        if (roll <= mushroomDropChance) {
+        val effectiveChance = (mushroomDropChance * currentLevel.dropBonus)
+        if (roll <= effectiveChance) {
             val dropX = (enemy.x + enemyDstRect.width() * 0.5f).coerceIn(0f,
                 (width - mushroomDrawWidthPx).coerceAtLeast(0f)
             )
@@ -1135,7 +1204,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             y = spawnY,
             bitmap = cfg.idleSheet,
             type = type,
-            speedPxPerFrame = 10f,
+            speedPxPerFrame = 10f * currentLevel.enemySpeedMultiplier,
             health = 10,
             maxHealth = 10
         )
@@ -1165,5 +1234,21 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
     fun toggleSound(isEnabled: Boolean) {
         isEnabledSound = isEnabled
+    }
+
+    private fun advanceLevel() {
+        // Move to next level or win if last
+        if (currentLevelIndex < levels.size - 1) {
+            currentLevelIndex += 1
+            killsThisLevel = 0
+            // Rebalance live enemies to match new cap (optional: trim extras)
+            while (enemies.count { !it.isDestroyed } > effectiveMaxEnemies()) {
+                // Remove oldest extra enemy
+                val idx = enemies.indexOfFirst { !it.isDestroyed }
+                if (idx >= 0) enemies.removeAt(idx) else break
+            }
+        } else {
+            isGameWon = true
+        }
     }
 }
