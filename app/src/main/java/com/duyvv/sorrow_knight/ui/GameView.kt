@@ -171,7 +171,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private val mushrooms = mutableListOf<MapItem>()
     private val mushroomBitmap: Bitmap by lazy { BitmapFactory.decodeResource(resources, R.drawable.mushroom) }
     private var mushroomHealAmount = 2f
-    private var mushroomDropChance = 0f // 50% chance for mushroom
+    private var mushroomDropChance = 0.5f // 50% chance for mushroom
     private val mushroomHitboxInsetXRatio = 0.18f
     private val mushroomHitboxInsetYRatio = 0.22f
     private val mushroomDrawWidthPx = 64f
@@ -180,7 +180,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     // Droppable shield items (meat)
     private val meats = mutableListOf<MapItem>()
     private val meatBitmap: Bitmap by lazy { BitmapFactory.decodeResource(resources, R.drawable.meat) }
-    private var meatDropChance = 1f // 30% chance for meat
+    private var meatDropChance = 0.5f // 30% chance for meat
     private val meatHitboxInsetXRatio = 0.18f
     private val meatHitboxInsetYRatio = 0.22f
     private val meatDrawWidthPx = 64f
@@ -202,21 +202,21 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     )
     private val levels = listOf(
         LevelConfig(
-            name = "Ruins - Patrol",
+            name = "Level 1",
             killTarget = 1,
             maxEnemies = 3,
             enemySpeedMultiplier = 1.0f,
             dropBonus = 1.0f
         ),
         LevelConfig(
-            name = "Graveyard - Stir",
+            name = "Level 2",
             killTarget = 1,
             maxEnemies = 3,
             enemySpeedMultiplier = 1.1f,
             dropBonus = 1.1f
         ),
         LevelConfig(
-            name = "Crypt - Assault",
+            name = "Level 3",
             killTarget = 1,
             maxEnemies = 3,
             enemySpeedMultiplier = 1.2f,
