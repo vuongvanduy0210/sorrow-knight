@@ -1,5 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <style name="Theme.Sorrow_knight" parent="Theme.AppCompat.DayNight.NoActionBar" >
+        <item name="android:textViewStyle">@style/AppTextViewStyle</item>
+        <item name="buttonStyle">@style/AppButtonStyle</item>
+    </style>
 
-    <style name="Theme.Sorrow_knight" parent="Theme.AppCompat.DayNight.NoActionBar" />
+    <style name="AppTextViewStyle" parent="android:Widget.TextView">
+        <item name="android:fontFamily">@font/rebellionsquad_zpprz</item>
+    </style>
+
+    <!-- Style cho Button -->
+    <style name="AppButtonStyle" parent="Widget.AppCompat.Button">
+        <item name="android:fontFamily">@font/rebellionsquad_zpprz</item>
+    </style>
 </resources>

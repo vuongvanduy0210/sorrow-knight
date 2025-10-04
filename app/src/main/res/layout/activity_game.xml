@@ -26,11 +26,16 @@
 
         <Button
             android:id="@+id/btnUp"
-            android:layout_width="64dp"
-            android:layout_height="64dp"
+            style="@style/AppButtonStyle"
+            android:layout_width="50dp"
             android:layout_margin="5dp"
             android:background="@drawable/button_blue_selector"
             android:textColor="#FFFFFF"
+            android:layout_height="50dp"
+            android:paddingBottom="18dp"
+            android:text="↑"
+            android:textSize="25sp"
+            android:textStyle="bold"
             app:layout_constraintBottom_toTopOf="@+id/btnLeft"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
@@ -38,18 +43,30 @@
 
         <Button
             android:id="@+id/btnLeft"
-            android:layout_width="64dp"
-            android:layout_height="64dp"
+            style="@style/AppButtonStyle"
+            android:layout_width="50dp"
             android:layout_margin="5dp"
+            android:layout_height="50dp"
+            android:paddingBottom="18dp"
+            android:text="←"
+            android:textColor="#FFFFFF"
+            android:textSize="25sp"
+            android:textStyle="bold"
             android:background="@drawable/button_blue_selector"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toStartOf="parent" />
 
         <Button
             android:id="@+id/btnDown"
-            android:layout_width="64dp"
-            android:layout_height="64dp"
+            style="@style/AppButtonStyle"
+            android:layout_width="50dp"
             android:layout_margin="5dp"
+            android:layout_height="50dp"
+            android:paddingBottom="18dp"
+            android:text="↓"
+            android:textColor="#FFFFFF"
+            android:textSize="25sp"
+            android:textStyle="bold"
             android:background="@drawable/button_blue_selector"
             app:layout_constraintBottom_toBottomOf="@+id/btnLeft"
             app:layout_constraintStart_toEndOf="@+id/btnLeft"
@@ -57,75 +74,91 @@
 
         <Button
             android:id="@+id/btnRight"
-            android:layout_width="64dp"
-            android:layout_height="64dp"
+            style="@style/AppButtonStyle"
+            android:layout_width="50dp"
             android:layout_margin="5dp"
+            android:layout_height="50dp"
+            android:paddingBottom="18dp"
+            android:text="→"
+            android:textColor="#FFFFFF"
+            android:textSize="25sp"
+            android:textStyle="bold"
             android:background="@drawable/button_blue_selector"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toEndOf="@+id/btnDown" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-    <LinearLayout
-        android:id="@+id/attackButtonsContainer"
+    <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_margin="16dp"
-        android:orientation="vertical"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <LinearLayout
-            style="?android:attr/buttonBarStyle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
+        <Button
+            android:id="@+id/btnAttackWarrior"
+            style="@style/AppButtonStyle"
+            android:layout_width="70dp"
+            android:layout_height="70dp"
+            android:layout_margin="30dp"
+            android:background="@drawable/button_red_selector"
+            android:paddingBottom="10dp"
+            android:text="War"
+            android:textColor="#FFFFFF"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
 
-            <Button
-                android:id="@+id/btnAttackWarrior"
-                android:layout_width="72dp"
-                android:layout_height="72dp"
-                android:layout_marginEnd="8dp"
-                android:background="@drawable/button_blue_selector"
-                android:text="War"
-                android:textColor="#FFFFFF" />
+        <Button
+            android:id="@+id/btnAttackArcher"
+            style="@style/AppButtonStyle"
+            android:layout_width="65dp"
+            android:layout_height="65dp"
+            android:background="@drawable/button_red_selector"
+            android:paddingBottom="10dp"
+            android:text="Arc"
+            android:textColor="#FFFFFF"
+            app:layout_constraintBottom_toTopOf="@+id/btnGuard"
+            app:layout_constraintEnd_toStartOf="@+id/btnAttackWarrior" />
 
-            <Button
-                android:id="@+id/btnAttackArcher"
-                android:layout_width="72dp"
-                android:layout_height="72dp"
-                android:layout_marginEnd="8dp"
-                android:background="@drawable/button_red_selector"
-                android:text="Arc"
-                android:textColor="#FFFFFF" />
-
-            <Button
-                android:id="@+id/btnAttackLancer"
-                android:layout_width="72dp"
-                android:layout_height="72dp"
-                android:background="@drawable/button_red_selector"
-                android:text="Lan"
-                android:textColor="#FFFFFF" />
-        </LinearLayout>
+        <Button
+            android:id="@+id/btnAttackLancer"
+            style="@style/AppButtonStyle"
+            android:layout_width="65dp"
+            android:layout_height="65dp"
+            android:layout_marginBottom="-10dp"
+            android:background="@drawable/button_red_selector"
+            android:paddingBottom="10dp"
+            android:text="Lan"
+            android:textColor="#FFFFFF"
+            app:layout_constraintBottom_toTopOf="@+id/btnAttackArcher"
+            app:layout_constraintEnd_toEndOf="@+id/btnAttackWarrior"
+            app:layout_constraintStart_toStartOf="@+id/btnAttackWarrior" />
 
         <Button
             android:id="@+id/btnGuard"
-            android:layout_width="64dp"
-            android:layout_height="56dp"
-            android:layout_marginTop="10dp"
-            android:background="@drawable/button_blue_selector"
+            style="@style/AppButtonStyle"
+            android:layout_width="65dp"
+            android:layout_height="65dp"
+            android:layout_marginEnd="-20dp"
+            android:layout_marginBottom="20dp"
+            android:background="@drawable/button_red_selector"
+            android:paddingBottom="10dp"
             android:text="Guard"
-            android:textColor="#FFFFFF" />
-    </LinearLayout>
+            android:textColor="#FFFFFF"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toStartOf="@+id/btnAttackArcher" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
 
     <androidx.appcompat.widget.SwitchCompat
         android:id="@+id/switchSoundEffect"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_margin="10dp"
+        android:layout_marginTop="50dp"
         android:checked="true"
+        android:layout_marginEnd="10dp"
         android:thumb="@drawable/thumb"
-        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent"
         app:track="@drawable/track" />
 
@@ -136,7 +169,8 @@
         android:layout_margin="10dp"
         android:checked="true"
         android:thumb="@drawable/thumb"
-        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="@+id/switchSoundEffect"
+        app:layout_constraintStart_toStartOf="@+id/switchSoundEffect"
         app:layout_constraintTop_toBottomOf="@+id/switchSoundEffect"
         app:track="@drawable/track" />
 </androidx.constraintlayout.widget.ConstraintLayout>

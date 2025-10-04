@@ -33,14 +33,20 @@
         <activity
             android:name=".GameOverActivity"
             android:exported="false"
+            android:launchMode="singleTask"
+            android:theme="@style/TransparentTheme"
             android:screenOrientation="landscape" />
         <activity
             android:name=".VictoryActivity"
             android:exported="false"
+            android:launchMode="singleTask"
+            android:theme="@style/TransparentTheme"
             android:screenOrientation="landscape" />
         <activity
             android:name=".LeaderboardActivity"
             android:exported="false"
+            android:launchMode="singleTask"
+            android:theme="@style/TransparentTheme"
             android:screenOrientation="landscape" />
     </application>
 

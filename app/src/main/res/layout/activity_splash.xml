@@ -42,21 +42,21 @@
             android:layout_width="200dp"
             android:layout_height="60dp"
             android:layout_marginBottom="16dp"
-            android:backgroundTint="#4CAF50"
+            android:backgroundTint="#CC4CAF50"
             android:text="START GAME"
+            android:background="@drawable/rounded_button"
             android:textColor="#FFFFFF"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+            android:textSize="18sp" />
 
         <Button
             android:id="@+id/btnLeaderboard"
             android:layout_width="200dp"
             android:layout_height="60dp"
-            android:backgroundTint="#FF9800"
+            android:backgroundTint="#CCFF9800"
             android:text="LEADERBOARD"
+            android:background="@drawable/rounded_button"
             android:textColor="#FFFFFF"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+            android:textSize="18sp" />
 
     </LinearLayout>
 

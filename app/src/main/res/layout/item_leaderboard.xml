@@ -20,9 +20,10 @@
             android:layout_width="40dp"
             android:layout_height="wrap_content"
             android:text="#1"
+            style="@style/AppTextViewStyle"
+
             android:textColor="#FFD700"
             android:textSize="16sp"
-            android:textStyle="bold"
             android:gravity="center" />
 
         <LinearLayout
@@ -38,14 +39,15 @@
                 android:layout_height="wrap_content"
                 android:text="02:30"
                 android:textColor="#FFFFFF"
-                android:textSize="18sp"
-                android:textStyle="bold" />
+                style="@style/AppTextViewStyle"
+                android:textSize="18sp" />
 
             <TextView
                 android:id="@+id/tvKills"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="15 kills"
+                style="@style/AppTextViewStyle"
                 android:textColor="#CCCCCC"
                 android:textSize="14sp" />
 
@@ -55,6 +57,7 @@
             android:id="@+id/tvDate"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            style="@style/AppTextViewStyle"
             android:text="01/01/2024"
             android:textColor="#AAAAAA"
             android:textSize="12sp" />

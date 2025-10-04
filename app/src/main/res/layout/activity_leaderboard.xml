@@ -14,8 +14,8 @@
         android:text="LEADERBOARD"
         android:textColor="#FFD700"
         android:textSize="32sp"
-        android:textStyle="bold"
         android:shadowColor="#000000"
+        style="@style/AppTextViewStyle"
         android:shadowDx="2"
         android:shadowDy="2"
         android:shadowRadius="4"
@@ -30,6 +30,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:text="Best completion times"
+        style="@style/AppTextViewStyle"
         android:textColor="#CCCCCC"
         android:textSize="16sp"
         app:layout_constraintEnd_toEndOf="parent"
@@ -80,35 +81,38 @@
 
         <Button
             android:id="@+id/btnBack"
+            style="@style/AppButtonStyle"
+            android:background="@drawable/rounded_button"
             android:layout_width="120dp"
-            android:layout_height="50dp"
+            android:layout_height="40dp"
             android:layout_marginEnd="12dp"
-            android:backgroundTint="#666666"
+            android:backgroundTint="#CC666666"
             android:text="BACK"
             android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textStyle="bold" />
+            android:textSize="14sp" />
 
         <Button
             android:id="@+id/btnClearScores"
             android:layout_width="120dp"
-            android:layout_height="50dp"
+            android:layout_height="40dp"
+            style="@style/AppButtonStyle"
+            android:background="@drawable/rounded_button"
             android:layout_marginEnd="12dp"
-            android:backgroundTint="#F44336"
+            android:backgroundTint="#CCF44336"
             android:text="CLEAR"
             android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textStyle="bold" />
+            android:textSize="14sp" />
 
         <Button
             android:id="@+id/btnPlayGame"
             android:layout_width="120dp"
-            android:layout_height="50dp"
-            android:backgroundTint="#4CAF50"
+            android:background="@drawable/rounded_button"
+            android:layout_height="40dp"
+            android:backgroundTint="#CC4CAF50"
             android:text="PLAY"
+            style="@style/AppButtonStyle"
             android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textStyle="bold" />
+            android:textSize="14sp" />
 
     </LinearLayout>
 
