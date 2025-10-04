@@ -83,17 +83,17 @@
             android:id="@+id/btnBack"
             style="@style/AppButtonStyle"
             android:background="@drawable/rounded_button"
-            android:layout_width="120dp"
+            android:layout_width="140dp"
             android:layout_height="40dp"
             android:layout_marginEnd="12dp"
             android:backgroundTint="#CC666666"
             android:text="BACK"
             android:textColor="#FFFFFF"
-            android:textSize="14sp" />
+            android:textSize="26sp" />
 
         <Button
             android:id="@+id/btnClearScores"
-            android:layout_width="120dp"
+            android:layout_width="140dp"
             android:layout_height="40dp"
             style="@style/AppButtonStyle"
             android:background="@drawable/rounded_button"
@@ -101,18 +101,18 @@
             android:backgroundTint="#CCF44336"
             android:text="CLEAR"
             android:textColor="#FFFFFF"
-            android:textSize="14sp" />
+            android:textSize="26sp" />
 
         <Button
             android:id="@+id/btnPlayGame"
-            android:layout_width="120dp"
+            android:layout_width="140dp"
             android:background="@drawable/rounded_button"
             android:layout_height="40dp"
             android:backgroundTint="#CC4CAF50"
             android:text="PLAY"
             style="@style/AppButtonStyle"
             android:textColor="#FFFFFF"
-            android:textSize="14sp" />
+            android:textSize="26sp" />
 
     </LinearLayout>
 

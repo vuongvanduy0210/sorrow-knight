@@ -7,8 +7,11 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RadialGradient
 import android.graphics.Rect
 import android.graphics.RectF
+import android.graphics.Shader
 import android.util.AttributeSet
 import android.util.Log
 import android.view.View
@@ -23,6 +26,9 @@ import com.duyvv.sorrow_knight.R
 import com.duyvv.sorrow_knight.VictoryActivity
 import com.duyvv.sorrow_knight.model.Enemy
 import com.duyvv.sorrow_knight.model.MapItem
+import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.cos
 
 class GameView(context: Context, attrs: AttributeSet? = null) : View(context, attrs) {
 
@@ -55,6 +61,17 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private val guardTotalFrames = 6
     private val guardFrameWidth = guardSprite.width / guardTotalFrames
     private val guardFrameHeight = guardSprite.height
+
+    // Explosion sprite
+    private val explosionSprite = BitmapFactory.decodeResource(resources, R.drawable.explosions)
+    private val explosionTotalFrames = 9 // Giả sử sprite sheet có 8 frames (cột), điều chỉnh nếu khác
+    private val explosionFrameWidth = explosionSprite.width / explosionTotalFrames
+    private val explosionFrameHeight = explosionSprite.height
+    private val explosionScale = 0.5f // Scale cho animation nổ
+    private val explosionFrameDuration = 80L // ms mỗi frame animation nổ
+    private val explosionDamageFrame = 3 // Frame gây sát thương (ví dụ frame 4, index từ 0)
+    private val explosionDamage = 2f // Sát thương từ vụ nổ
+    private val explosionRadius = 150f // Bán kính vụ nổ để check collision với player
 
     // ==================== ANIMATION ====================
     private var currentFrame = 0
@@ -132,13 +149,19 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private var lastDamageFlashAt = 0L
     private val damageFlashDurationMs = 220L
 
-    // Shield effect paint
-    private val shieldPaint = Paint().apply {
-        color = Color.argb(100, 0, 191, 255) // Màu xanh dương mờ
-        style = Paint.Style.STROKE
-        strokeWidth = 4f
+    // Shield effect paints
+    private val shieldGlowPaint = Paint().apply {
+        style = Paint.Style.FILL
         isAntiAlias = true
     }
+    private val shieldOutlinePaint = Paint().apply {
+        color = Color.argb(255, 0, 191, 255) // Blue outline
+        style = Paint.Style.STROKE
+        strokeWidth = 3f
+        isAntiAlias = true
+    }
+    private var shieldPulseTimer = 0L
+    private val shieldPulseDuration = 1000L // 1 second per pulse cycle
 
     // ==================== PROJECTILES ====================
     private data class Arrow(
@@ -157,6 +180,19 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         arrowSpeedPxPerFrameDefault = speedPxPerFrame
     }
 
+    // ==================== EXPLOSIONS ====================
+    private data class Explosion(
+        var x: Float,
+        var y: Float,
+        var currentFrame: Int = 0,
+        var frameTimer: Long = System.currentTimeMillis(),
+        var hasDealtDamage: Boolean = false,
+        var isFinished: Boolean = false
+    )
+    private val explosions = mutableListOf<Explosion>()
+    private val explosionSrcRect = Rect()
+    private val explosionDstRect = RectF()
+
     // ==================== AUDIO ====================
     private var attackPlayer: ExoPlayer? = null
     private var hitSoundPlayer: ExoPlayer? = null
@@ -171,7 +207,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private val mushrooms = mutableListOf<MapItem>()
     private val mushroomBitmap: Bitmap by lazy { BitmapFactory.decodeResource(resources, R.drawable.mushroom) }
     private var mushroomHealAmount = 2f
-    private var mushroomDropChance = 0.5f // 50% chance for mushroom
+    private var mushroomDropChance = 0f // 50% chance for mushroom
     private val mushroomHitboxInsetXRatio = 0.18f
     private val mushroomHitboxInsetYRatio = 0.22f
     private val mushroomDrawWidthPx = 64f
@@ -180,7 +216,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     // Droppable shield items (meat)
     private val meats = mutableListOf<MapItem>()
     private val meatBitmap: Bitmap by lazy { BitmapFactory.decodeResource(resources, R.drawable.meat) }
-    private var meatDropChance = 0.5f // 30% chance for meat
+    private var meatDropChance = 1f // 30% chance for meat
     private val meatHitboxInsetXRatio = 0.18f
     private val meatHitboxInsetYRatio = 0.22f
     private val meatDrawWidthPx = 64f
@@ -198,29 +234,37 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         val killTarget: Int,
         val maxEnemies: Int,
         val enemySpeedMultiplier: Float,
-        val dropBonus: Float
+        val dropBonus: Float,
+        val explosionChance: Float,
+        val maxHealthEnemy: Int
     )
     private val levels = listOf(
         LevelConfig(
             name = "Level 1",
-            killTarget = 1,
+            killTarget = 5,
             maxEnemies = 3,
             enemySpeedMultiplier = 1.0f,
-            dropBonus = 1.0f
+            dropBonus = 1.0f,
+            explosionChance = 1f,
+            maxHealthEnemy = 10
         ),
         LevelConfig(
             name = "Level 2",
             killTarget = 1,
             maxEnemies = 3,
             enemySpeedMultiplier = 1.1f,
-            dropBonus = 1.1f
+            dropBonus = 1.1f,
+            explosionChance = 0.2f,
+            maxHealthEnemy = 12
         ),
         LevelConfig(
             name = "Level 3",
             killTarget = 1,
             maxEnemies = 3,
             enemySpeedMultiplier = 1.2f,
-            dropBonus = 1.2f
+            dropBonus = 1.2f,
+            explosionChance = 0.3f,
+            maxHealthEnemy = 15
         )
     )
     private var currentLevelIndex = 0
@@ -308,7 +352,6 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
     // Win condition tracking
     private var enemiesKilled = 0
-    private val enemiesToWin = 2 // (unused after levels) giữ để tương thích nhưng không còn dùng để thắng
     private var gameStartTime = 0L
     private var isGameWon = false
 
@@ -390,16 +433,17 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         updateEnemies()
         updateArrows()
         updateItems()
+        updateExplosions()
 
         drawEnemies(canvas)
         drawArrows(canvas)
         drawMushrooms(canvas)
         drawMeats(canvas)
         drawCharacter(canvas)
+        drawExplosions(canvas)
 
         // HUD
         drawPlayerHealthHud(canvas)
-        drawKillCountHud(canvas)
         drawGameTimeHud(canvas)
         drawLevelHud(canvas)
 
@@ -510,6 +554,26 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         }
     }
 
+    private fun drawExplosions(canvas: Canvas) {
+        for (explosion in explosions) {
+            if (explosion.isFinished) continue
+            val frame = explosion.currentFrame
+            explosionSrcRect.set(
+                frame * explosionFrameWidth,
+                0,
+                (frame + 1) * explosionFrameWidth,
+                explosionFrameHeight
+            )
+            explosionDstRect.set(
+                explosion.x,
+                explosion.y,
+                explosion.x + explosionFrameWidth * explosionScale,
+                explosion.y + explosionFrameHeight * explosionScale
+            )
+            canvas.drawBitmap(explosionSprite, explosionSrcRect, explosionDstRect, paint)
+        }
+    }
+
     private fun drawCharacter(canvas: Canvas) {
         val bitmap: Bitmap
         val frameWidth: Int
@@ -596,12 +660,80 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
         // Vẽ hiệu ứng khiên nếu có
         if (hasShield) {
-            val shieldRect = RectF(dstRect)
-            shieldRect.inset(-8f, -8f) // Mở rộng một chút để bao quanh nhân vật
-            canvas.drawOval(shieldRect, shieldPaint)
-        }
+            // Calculate pulse factors for animation
+            val now = System.currentTimeMillis()
+            val pulseProgress = ((now - shieldPulseTimer) % shieldPulseDuration).toFloat() / shieldPulseDuration
+            val pulseFactor = 0.85f + 0.15f * cos(2 * Math.PI * pulseProgress).toFloat() // Oscillate between 0.85 and 1.15
+            val alphaPulse = (100 + 40 * cos(2 * Math.PI * pulseProgress)).toInt().coerceIn(70, 140) // Stronger alpha oscillation
 
-        // Player health bar moved to HUD (top-left). See drawPlayerHealthHud.
+            // Define main shield rectangle
+            val shieldRect = RectF(dstRect)
+            val inset = -12f * pulseFactor // Stronger pulse effect
+            shieldRect.inset(inset, inset)
+
+            // Create radial gradient for main glowing shield
+            val centerX = shieldRect.centerX()
+            val centerY = shieldRect.centerY()
+            val radius = shieldRect.width() / 2f
+            shieldGlowPaint.shader = RadialGradient(
+                centerX, centerY, radius,
+                intArrayOf(
+                    Color.argb(alphaPulse, 255, 255, 255), // White center for bright glow
+                    Color.argb((alphaPulse * 0.7f).toInt(), 0, 191, 255), // Bright blue
+                    Color.argb((alphaPulse * 0.3f).toInt(), 0, 191, 255), // Mid blue
+                    Color.argb(0, 0, 191, 255) // Transparent edge
+                ),
+                floatArrayOf(0f, 0.4f, 0.7f, 1f),
+                Shader.TileMode.CLAMP
+            )
+
+            // Draw main glowing shield
+            val shieldPath = Path().apply {
+                addOval(shieldRect, Path.Direction.CW)
+            }
+            canvas.drawPath(shieldPath, shieldGlowPaint)
+
+            // Draw first ripple effect
+            val rippleRect1 = RectF(shieldRect)
+            val rippleInset1 = inset * 0.6f // First ripple at 60% size
+            rippleRect1.inset(rippleInset1, rippleInset1)
+            val rippleAlpha1 = (80 + 30 * cos(2 * Math.PI * pulseProgress + Math.PI)).toInt().coerceIn(50, 110) // Offset phase
+            shieldGlowPaint.shader = RadialGradient(
+                centerX, centerY, rippleRect1.width() / 2f,
+                intArrayOf(
+                    Color.argb(rippleAlpha1, 255, 255, 255), // White center
+                    Color.argb((rippleAlpha1 * 0.5f).toInt(), 0, 191, 255), // Fading blue
+                    Color.argb(0, 0, 191, 255) // Transparent edge
+                ),
+                floatArrayOf(0f, 0.6f, 1f),
+                Shader.TileMode.CLAMP
+            )
+            val ripplePath1 = Path().apply {
+                addOval(rippleRect1, Path.Direction.CW)
+            }
+            canvas.drawPath(ripplePath1, shieldGlowPaint)
+
+            // Draw second ripple effect (faster cycle)
+            val rippleRect2 = RectF(shieldRect)
+            val rippleInset2 = inset * 0.3f // Second ripple at 30% size
+            rippleRect2.inset(rippleInset2, rippleInset2)
+            val fastPulseProgress = ((now - shieldPulseTimer) % (shieldPulseDuration / 2)).toFloat() / (shieldPulseDuration / 2)
+            val rippleAlpha2 = (70 + 25 * cos(2 * Math.PI * fastPulseProgress)).toInt().coerceIn(45, 95) // Faster cycle
+            shieldGlowPaint.shader = RadialGradient(
+                centerX, centerY, rippleRect2.width() / 2f,
+                intArrayOf(
+                    Color.argb(rippleAlpha2, 255, 255, 255), // White center
+                    Color.argb((rippleAlpha2 * 0.5f).toInt(), 0, 191, 255), // Fading blue
+                    Color.argb(0, 0, 191, 255) // Transparent edge
+                ),
+                floatArrayOf(0f, 0.6f, 1f),
+                Shader.TileMode.CLAMP
+            )
+            val ripplePath2 = Path().apply {
+                addOval(rippleRect2, Path.Direction.CW)
+            }
+            canvas.drawPath(ripplePath2, shieldGlowPaint)
+        }
     }
 
     private fun drawHitbox(canvas: Canvas) {
@@ -624,17 +756,6 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         canvas.drawRect(hbLeft, hbTop, hbRight, hbBottom, healthBarBorderPaint)
     }
 
-    private fun drawKillCountHud(canvas: Canvas) {
-        val padding = 16f
-        val text = "Kills: $enemiesKilled/$enemiesToWin"
-        val textX = width - padding
-        val textY = padding + hudTextPaint.textSize
-
-        // Draw text aligned to right
-        hudTextPaint.textAlign = Paint.Align.RIGHT
-        canvas.drawText(text, textX, textY, hudTextPaint)
-    }
-
     private fun drawGameTimeHud(canvas: Canvas) {
         val padding = 16f
         val currentTime = System.currentTimeMillis()
@@ -642,10 +763,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
         val minutes = elapsedTime / 60000
         val seconds = (elapsedTime % 60000) / 1000
-        val timeString = String.format("Time: %02d:%02d", minutes, seconds)
+        val timeString = String.format(Locale.US, "Time: %02d:%02d", minutes, seconds)
 
         val textX = width - padding
-        val textY = padding + hudTextPaint.textSize * 2 + 8f // Vị trí dưới kill count
+        val textY = padding + hudTextPaint.textSize + 8f // Vị trí dưới kill count
 
         // Draw text aligned to right
         hudTextPaint.textAlign = Paint.Align.RIGHT
@@ -721,6 +842,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             if (RectF.intersects(playerBoxRect, meatRect)) {
                 m.isDestroyed = true
                 hasShield = true
+                shieldPulseTimer = System.currentTimeMillis() // Reset pulse timer when shield is gained
             }
         }
         meats.removeAll { it.isDestroyed }
@@ -1073,6 +1195,50 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         }
     }
 
+    private fun updateExplosions() {
+        val now = System.currentTimeMillis()
+        val iterator = explosions.iterator()
+        while (iterator.hasNext()) {
+            val explosion = iterator.next()
+            if (explosion.isFinished) {
+                iterator.remove()
+                continue
+            }
+            if (now - explosion.frameTimer > explosionFrameDuration) {
+                explosion.currentFrame++
+                explosion.frameTimer = now
+                if (explosion.currentFrame >= explosionTotalFrames) {
+                    explosion.isFinished = true
+                    continue
+                }
+            }
+            // Check for damage at specific frame
+            if (explosion.currentFrame == explosionDamageFrame && !explosion.hasDealtDamage) {
+                explosion.hasDealtDamage = true
+                // Calculate distance to player
+                val explosionCenterX = explosion.x + (explosionFrameWidth * explosionScale) / 2f
+                val explosionCenterY = explosion.y + (explosionFrameHeight * explosionScale) / 2f
+                val playerCenterX = characterX + (runFrameWidth * scale) / 2f
+                val playerCenterY = characterY + (runFrameHeight * scale) / 2f
+                val distX = abs(playerCenterX - explosionCenterX)
+                val distY = abs(playerCenterY - explosionCenterY)
+                val distance = kotlin.math.sqrt(distX * distX + distY * distY)
+                if (distance <= explosionRadius) {
+                    // Apply damage similar to enemy attack
+                    if (hasShield) {
+                        hasShield = false
+                        Log.d(TAG, "Shield absorbed explosion damage!")
+                    } else {
+                        val actualDamage = if (isGuarding) (explosionDamage * guardDamageMultiplier).coerceAtLeast(0f) else explosionDamage
+                        playerHealth = (playerHealth - actualDamage).coerceAtLeast(0f)
+                        lastDamageFlashAt = now
+                        Log.d(TAG, "Player hit by explosion! Health left: $playerHealth")
+                    }
+                }
+            }
+        }
+    }
+
     // ==================== CONTROL ====================
     fun startMoving(direction: Direction) {
         movingDirection = direction
@@ -1156,10 +1322,11 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         spawnEnemy(Enemy.Type.TNT)
         previousAliveEnemies = enemies.count { !it.isDestroyed }
 
-        // Clear arrows and mushrooms
+        // Clear arrows, mushrooms, meats, explosions
         arrows.clear()
         mushrooms.clear()
         meats.clear()
+        explosions.clear()
 
         // Reset character state
         isMoving = false
@@ -1171,6 +1338,9 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         lastHitTime = 0L
         hasFiredArrowThisAttack = false
         meleeDamageApplied = false
+
+        // Reset shield pulse timer
+        shieldPulseTimer = System.currentTimeMillis()
 
         // Restart the game loop
         postInvalidateOnAnimation()
@@ -1234,6 +1404,20 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 )
             )
         }
+
+        // Roll for explosion
+        val explosionRoll = Math.random()
+        if (explosionRoll < currentLevel.explosionChance) {
+            val explosionX = enemy.x + (enemyDstRect.width() / 2f) - (explosionFrameWidth * explosionScale / 2f)
+            val explosionY = enemy.y + (enemyDstRect.height() / 2f) - (explosionFrameHeight * explosionScale / 2f)
+            explosions.add(
+                Explosion(
+                    x = explosionX,
+                    y = explosionY
+                )
+            )
+            Log.d(TAG, "Enemy exploded at (${explosionX}, ${explosionY})")
+        }
     }
 
     private fun spawnEnemy(type: Enemy.Type) {
@@ -1252,7 +1436,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             type = type,
             speedPxPerFrame = 10f * currentLevel.enemySpeedMultiplier,
             health = 10,
-            maxHealth = 10
+            maxHealth = currentLevel.maxHealthEnemy
         )
         enemy.movingLeft = listOf(true, false).random()
         enemies.add(enemy)

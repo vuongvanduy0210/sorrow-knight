@@ -6,11 +6,11 @@
     </style>
 
     <style name="AppTextViewStyle" parent="android:Widget.TextView">
-        <item name="android:fontFamily">@font/rebellionsquad_zpprz</item>
+        <item name="android:fontFamily">@font/game_font</item>
     </style>
 
     <!-- Style cho Button -->
     <style name="AppButtonStyle" parent="Widget.AppCompat.Button">
-        <item name="android:fontFamily">@font/rebellionsquad_zpprz</item>
+        <item name="android:fontFamily">@font/game_font</item>
     </style>
 </resources>

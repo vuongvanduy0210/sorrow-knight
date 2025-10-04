@@ -99,8 +99,7 @@
             android:paddingHorizontal="10dp"
             android:text="PLAY AGAIN"
             android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textStyle="bold" />
+            android:textSize="25dp" />
 
         <Button
             android:id="@+id/btnMainMenu"
@@ -112,10 +111,10 @@
             android:background="@drawable/rounded_button"
             android:backgroundTint="#CC2196F3"
             android:maxLines="1"
-            android:text="MAIN MENU"
+            android:textAllCaps="false"
+            android:text="Main Menu"
             android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textStyle="bold" />
+            android:textSize="25dp" />
 
         <Button
             android:id="@+id/btnViewLeaderboard"
@@ -128,8 +127,7 @@
             android:maxLines="1"
             android:text="LEADERBOARD"
             android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textStyle="bold" />
+            android:textSize="25dp" />
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
