@@ -12,15 +12,13 @@ import android.graphics.RadialGradient
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
+import android.media.AudioAttributes
+import android.media.SoundPool
 import android.util.AttributeSet
 import android.util.Log
 import android.view.View
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.graphics.withScale
-import androidx.core.net.toUri
-import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
 import com.duyvv.sorrow_knight.GameOverActivity
 import com.duyvv.sorrow_knight.R
 import com.duyvv.sorrow_knight.VictoryActivity
@@ -64,19 +62,19 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
     // Explosion sprite
     private val explosionSprite = BitmapFactory.decodeResource(resources, R.drawable.explosions)
-    private val explosionTotalFrames = 9 // Giả sử sprite sheet có 8 frames (cột), điều chỉnh nếu khác
+    private val explosionTotalFrames = 9
     private val explosionFrameWidth = explosionSprite.width / explosionTotalFrames
     private val explosionFrameHeight = explosionSprite.height
-    private val explosionScale = 0.5f // Scale cho animation nổ
-    private val explosionFrameDuration = 80L // ms mỗi frame animation nổ
-    private val explosionDamageFrame = 3 // Frame gây sát thương (ví dụ frame 4, index từ 0)
-    private val explosionDamage = 2f // Sát thương từ vụ nổ
-    private val explosionRadius = 150f // Bán kính vụ nổ để check collision với player
+    private val explosionScale = 0.5f
+    private val explosionFrameDuration = 80L
+    private val explosionDamageFrame = 3
+    private val explosionDamage = 2f
+    private val explosionRadius = 150f
 
     // ==================== ANIMATION ====================
     private var currentFrame = 0
     private var frameTimer = 0L
-    private val frameDuration = 120L // ms mỗi frame
+    private val frameDuration = 120L
 
     // ==================== STATE ====================
     private enum class AttackType { NONE, WARRIOR, ARCHER, LANCER }
@@ -154,14 +152,8 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         style = Paint.Style.FILL
         isAntiAlias = true
     }
-    private val shieldOutlinePaint = Paint().apply {
-        color = Color.argb(255, 0, 191, 255) // Blue outline
-        style = Paint.Style.STROKE
-        strokeWidth = 3f
-        isAntiAlias = true
-    }
     private var shieldPulseTimer = 0L
-    private val shieldPulseDuration = 1000L // 1 second per pulse cycle
+    private val shieldPulseDuration = 1000L
 
     // ==================== PROJECTILES ====================
     private data class Arrow(
@@ -194,8 +186,15 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private val explosionDstRect = RectF()
 
     // ==================== AUDIO ====================
-    private var attackPlayer: ExoPlayer? = null
-    private var hitSoundPlayer: ExoPlayer? = null
+    private var soundPool: SoundPool? = null
+    private var swordSoundId = 0
+    private var lancerSoundId = 0
+    private var hitSoundId = 0
+    private var explosionSoundId = 0
+    private var healSoundId = 0
+    private var meatSoundId = 0
+    private var hurtSoundId = 0
+    private var wallHitSoundId = 0
     private var isEnabledSound = true
 
     // ==================== DIRECTION ====================
@@ -203,26 +202,23 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private var movingDirection: Direction? = null
 
     // ==================== ITEMS ====================
-    // Droppable healing items
     private val mushrooms = mutableListOf<MapItem>()
     private val mushroomBitmap: Bitmap by lazy { BitmapFactory.decodeResource(resources, R.drawable.mushroom) }
     private var mushroomHealAmount = 2f
-    private var mushroomDropChance = 0f // 50% chance for mushroom
+    private var mushroomDropChance = 0f
     private val mushroomHitboxInsetXRatio = 0.18f
     private val mushroomHitboxInsetYRatio = 0.22f
     private val mushroomDrawWidthPx = 64f
     private val mushroomDrawHeightPx = 64f
 
-    // Droppable shield items (meat)
     private val meats = mutableListOf<MapItem>()
     private val meatBitmap: Bitmap by lazy { BitmapFactory.decodeResource(resources, R.drawable.meat) }
-    private var meatDropChance = 1f // 30% chance for meat
+    private var meatDropChance = 1f
     private val meatHitboxInsetXRatio = 0.18f
     private val meatHitboxInsetYRatio = 0.22f
     private val meatDrawWidthPx = 64f
     private val meatDrawHeightPx = 64f
 
-    // Shield state
     private var hasShield = false
 
     // ==================== ENEMIES ====================
@@ -303,7 +299,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
     private val pawnConfig: EnemyAnimConfig by lazy {
         EnemyAnimConfig(
-            idleSheet = BitmapFactory.decodeResource(resources, R.drawable.pawn_run), // dùng run làm idle
+            idleSheet = BitmapFactory.decodeResource(resources, R.drawable.pawn_run),
             moveSheet = BitmapFactory.decodeResource(resources, R.drawable.pawn_run),
             attackSheet = BitmapFactory.decodeResource(resources, R.drawable.pawn_attack),
             idleColumns = 6,
@@ -338,19 +334,15 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private val minEnemiesAtStart = 3
     private var previousAliveEnemies = 0
 
-    // Player state (simple health and hit cooldown)
     private var playerHealth = 10f
     private var playerMaxHealth = 10f
     private var lastHitTime = 0L
     private val hitCooldownMs = 800L
     private var damageWarrior = 2
     private var damageLancer = 3
-    private var guardDamageMultiplier = 0.4f // nhận 40% sát thương khi đang thủ
+    private var guardDamageMultiplier = 0.4f
 
-    // Game state
     private var isGameOver = false
-
-    // Win condition tracking
     private var enemiesKilled = 0
     private var gameStartTime = 0L
     private var isGameWon = false
@@ -359,15 +351,12 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         setupCharacterPosition(h)
-        // Spawn đúng 3 quái: Torch, Warrior, TNT
         enemies.clear()
         spawnEnemy(Enemy.Type.TORCH)
         spawnEnemy(Enemy.Type.WARRIOR)
         spawnEnemy(Enemy.Type.TNT)
         previousAliveEnemies = enemies.count { !it.isDestroyed }
         initAudio()
-
-        // Initialize game start time
         gameStartTime = System.currentTimeMillis()
         enemiesKilled = 0
         isGameWon = false
@@ -376,41 +365,40 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     }
 
     fun initAudio() {
-        attackPlayer = ExoPlayer.Builder(context).build().apply {
-            val mediaItem = MediaItem.fromUri("android.resource://${context.packageName}/${R.raw.pew}".toUri())
-            setMediaItem(mediaItem)
-            prepare()
-            playWhenReady = false
-            repeatMode = Player.REPEAT_MODE_OFF
-        }
-        hitSoundPlayer = ExoPlayer.Builder(context).build().apply {
-            val mediaItem = MediaItem.fromUri("android.resource://${context.packageName}/${R.raw.hit}".toUri())
-            setMediaItem(mediaItem)
-            prepare()
-            playWhenReady = false
-            repeatMode = Player.REPEAT_MODE_OFF
-        }
+        val audioAttributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_GAME)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
+        soundPool = SoundPool.Builder()
+            .setMaxStreams(10)
+            .setAudioAttributes(audioAttributes)
+            .build()
+
+        swordSoundId = soundPool?.load(context, R.raw.sword, 1) ?: 0
+        lancerSoundId = soundPool?.load(context, R.raw.lancer, 1) ?: 0
+        hitSoundId = soundPool?.load(context, R.raw.hit, 1) ?: 0
+        explosionSoundId = soundPool?.load(context, R.raw.explosion, 1) ?: 0
+        healSoundId = soundPool?.load(context, R.raw.heal, 1) ?: 0
+        meatSoundId = soundPool?.load(context, R.raw.meat, 1) ?: 0
+        hurtSoundId = soundPool?.load(context, R.raw.hurt, 1) ?: 0
+        wallHitSoundId = soundPool?.load(context, R.raw.hit, 1) ?: 0
     }
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
-        attackPlayer?.release()
-        attackPlayer = null
-        hitSoundPlayer?.release()
-        hitSoundPlayer = null
+        soundPool?.release()
+        soundPool = null
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        // Check for game over condition
         if (playerHealth <= 0f && !isGameOver) {
             isGameOver = true
             showGameOverScreen()
             return
         }
 
-        // Level progression and win condition
         if (!isGameOver && !isGameWon && killsThisLevel >= currentLevel.killTarget) {
             advanceLevel()
             if (isGameWon) {
@@ -423,7 +411,6 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             return
         }
 
-        // Don't update game if game is over or won
         if (isGameOver || isGameWon) {
             return
         }
@@ -442,12 +429,9 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         drawCharacter(canvas)
         drawExplosions(canvas)
 
-        // HUD
         drawPlayerHealthHud(canvas)
         drawGameTimeHud(canvas)
         drawLevelHud(canvas)
-
-        // Damage flash overlay
         drawDamageFlash(canvas)
 
         postInvalidateOnAnimation()
@@ -503,11 +487,6 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 enemy.y + fh * cfg.scale
             )
 
-            // Vẽ hitbox quái để debug
-//            getEnemyHitboxInto(enemy, enemyHitboxRect)
-//            canvas.drawRect(enemyHitboxRect, enemyHitboxPaint)
-
-            // Lật ảnh theo hướng nhìn
             val centerX = enemyDstRect.centerX()
             if (enemy.facingLeft) {
                 canvas.withScale(-1f, 1f, centerX, enemyDstRect.centerY()) {
@@ -517,11 +496,9 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 canvas.drawBitmap(sheet, enemySrcRect, enemyDstRect, paint)
             }
 
-            // Draw enemy health bar above sprite
             val hbWidth = enemyDstRect.width() * 0.3f
             val hbHeight = 8f
             val hbLeft = enemyDstRect.centerX() - hbWidth / 2f
-            // Tính vị trí đầu thực tế (bỏ qua padding)
             val actualHeadTop = enemyDstRect.top + (cfg.paddingVertical * cfg.scale)
             val hbTop = actualHeadTop - hbHeight + 30f
             val hbRight = hbLeft + hbWidth
@@ -557,11 +534,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private fun drawExplosions(canvas: Canvas) {
         for (explosion in explosions) {
             if (explosion.isFinished) continue
-            val frame = explosion.currentFrame
             explosionSrcRect.set(
-                frame * explosionFrameWidth,
+                explosion.currentFrame * explosionFrameWidth,
                 0,
-                (frame + 1) * explosionFrameWidth,
+                (explosion.currentFrame + 1) * explosionFrameWidth,
                 explosionFrameHeight
             )
             explosionDstRect.set(
@@ -630,7 +606,6 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             }
         }
 
-        // Cắt frame từ sprite sheet
         val paddingVertical = 80
         val paddingHorizontal = 60
         srcRect.set(
@@ -640,7 +615,6 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             frameHeight - paddingVertical
         )
 
-        // Vị trí đích
         dstRect.set(
             characterX,
             characterY,
@@ -656,54 +630,47 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         } else {
             canvas.drawBitmap(bitmap, srcRect, dstRect, paint)
         }
-//        drawHitbox(canvas)
 
-        // Vẽ hiệu ứng khiên nếu có
         if (hasShield) {
-            // Calculate pulse factors for animation
             val now = System.currentTimeMillis()
             val pulseProgress = ((now - shieldPulseTimer) % shieldPulseDuration).toFloat() / shieldPulseDuration
-            val pulseFactor = 0.85f + 0.15f * cos(2 * Math.PI * pulseProgress).toFloat() // Oscillate between 0.85 and 1.15
-            val alphaPulse = (100 + 40 * cos(2 * Math.PI * pulseProgress)).toInt().coerceIn(70, 140) // Stronger alpha oscillation
+            val pulseFactor = 0.85f + 0.15f * cos(2 * Math.PI * pulseProgress).toFloat()
+            val alphaPulse = (100 + 40 * cos(2 * Math.PI * pulseProgress)).toInt().coerceIn(70, 140)
 
-            // Define main shield rectangle
             val shieldRect = RectF(dstRect)
-            val inset = -12f * pulseFactor // Stronger pulse effect
+            val inset = -12f * pulseFactor
             shieldRect.inset(inset, inset)
 
-            // Create radial gradient for main glowing shield
             val centerX = shieldRect.centerX()
             val centerY = shieldRect.centerY()
             val radius = shieldRect.width() / 2f
             shieldGlowPaint.shader = RadialGradient(
                 centerX, centerY, radius,
                 intArrayOf(
-                    Color.argb(alphaPulse, 255, 255, 255), // White center for bright glow
-                    Color.argb((alphaPulse * 0.7f).toInt(), 0, 191, 255), // Bright blue
-                    Color.argb((alphaPulse * 0.3f).toInt(), 0, 191, 255), // Mid blue
-                    Color.argb(0, 0, 191, 255) // Transparent edge
+                    Color.argb(alphaPulse, 255, 255, 255),
+                    Color.argb((alphaPulse * 0.7f).toInt(), 0, 191, 255),
+                    Color.argb((alphaPulse * 0.3f).toInt(), 0, 191, 255),
+                    Color.argb(0, 0, 191, 255)
                 ),
                 floatArrayOf(0f, 0.4f, 0.7f, 1f),
                 Shader.TileMode.CLAMP
             )
 
-            // Draw main glowing shield
             val shieldPath = Path().apply {
                 addOval(shieldRect, Path.Direction.CW)
             }
             canvas.drawPath(shieldPath, shieldGlowPaint)
 
-            // Draw first ripple effect
             val rippleRect1 = RectF(shieldRect)
-            val rippleInset1 = inset * 0.6f // First ripple at 60% size
+            val rippleInset1 = inset * 0.6f
             rippleRect1.inset(rippleInset1, rippleInset1)
-            val rippleAlpha1 = (80 + 30 * cos(2 * Math.PI * pulseProgress + Math.PI)).toInt().coerceIn(50, 110) // Offset phase
+            val rippleAlpha1 = (80 + 30 * cos(2 * Math.PI * pulseProgress + Math.PI)).toInt().coerceIn(50, 110)
             shieldGlowPaint.shader = RadialGradient(
                 centerX, centerY, rippleRect1.width() / 2f,
                 intArrayOf(
-                    Color.argb(rippleAlpha1, 255, 255, 255), // White center
-                    Color.argb((rippleAlpha1 * 0.5f).toInt(), 0, 191, 255), // Fading blue
-                    Color.argb(0, 0, 191, 255) // Transparent edge
+                    Color.argb(rippleAlpha1, 255, 255, 255),
+                    Color.argb((rippleAlpha1 * 0.5f).toInt(), 0, 191, 255),
+                    Color.argb(0, 0, 191, 255)
                 ),
                 floatArrayOf(0f, 0.6f, 1f),
                 Shader.TileMode.CLAMP
@@ -713,18 +680,17 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             }
             canvas.drawPath(ripplePath1, shieldGlowPaint)
 
-            // Draw second ripple effect (faster cycle)
             val rippleRect2 = RectF(shieldRect)
-            val rippleInset2 = inset * 0.3f // Second ripple at 30% size
+            val rippleInset2 = inset * 0.3f
             rippleRect2.inset(rippleInset2, rippleInset2)
             val fastPulseProgress = ((now - shieldPulseTimer) % (shieldPulseDuration / 2)).toFloat() / (shieldPulseDuration / 2)
-            val rippleAlpha2 = (70 + 25 * cos(2 * Math.PI * fastPulseProgress)).toInt().coerceIn(45, 95) // Faster cycle
+            val rippleAlpha2 = (70 + 25 * cos(2 * Math.PI * fastPulseProgress)).toInt().coerceIn(45, 95)
             shieldGlowPaint.shader = RadialGradient(
                 centerX, centerY, rippleRect2.width() / 2f,
                 intArrayOf(
-                    Color.argb(rippleAlpha2, 255, 255, 255), // White center
-                    Color.argb((rippleAlpha2 * 0.5f).toInt(), 0, 191, 255), // Fading blue
-                    Color.argb(0, 0, 191, 255) // Transparent edge
+                    Color.argb(rippleAlpha2, 255, 255, 255),
+                    Color.argb((rippleAlpha2 * 0.5f).toInt(), 0, 191, 255),
+                    Color.argb(0, 0, 191, 255)
                 ),
                 floatArrayOf(0f, 0.6f, 1f),
                 Shader.TileMode.CLAMP
@@ -766,9 +732,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         val timeString = String.format(Locale.US, "Time: %02d:%02d", minutes, seconds)
 
         val textX = width - padding
-        val textY = padding + hudTextPaint.textSize + 8f // Vị trí dưới kill count
-
-        // Draw text aligned to right
+        val textY = padding + hudTextPaint.textSize + 8f
         hudTextPaint.textAlign = Paint.Align.RIGHT
         canvas.drawText(timeString, textX, textY, hudTextPaint)
     }
@@ -790,7 +754,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         val elapsed = now - lastDamageFlashAt
         if (elapsed in 0..damageFlashDurationMs) {
             val t = 1f - (elapsed.toFloat() / damageFlashDurationMs.toFloat())
-            val alpha = (t * 160).toInt().coerceIn(0, 160) // peak 160 alpha
+            val alpha = (t * 160).toInt().coerceIn(0, 160)
             damageFlashPaint.color = Color.argb(alpha, 255, 0, 0)
             canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), damageFlashPaint)
         }
@@ -799,7 +763,6 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private fun updateItems() {
         if (mushroomBitmap.width <= 0 || mushroomBitmap.height <= 0) return
         if (meatBitmap.width <= 0 || meatBitmap.height <= 0) return
-        // Player bounding box
         playerBoxRect.set(
             characterX,
             characterY,
@@ -808,7 +771,6 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         )
         for (m in mushrooms) {
             if (m.isDestroyed) continue
-            // Smaller mushroom hitbox
             val mw = mushroomDrawWidthPx
             val mh = mushroomDrawHeightPx
             val insetX = mw * mushroomHitboxInsetXRatio
@@ -822,13 +784,13 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             if (RectF.intersects(playerBoxRect, mushRect)) {
                 m.isDestroyed = true
                 playerHealth = (playerHealth + mushroomHealAmount).coerceAtMost(playerMaxHealth)
+                playHealSound()
             }
         }
         mushrooms.removeAll { it.isDestroyed }
 
         for (m in meats) {
             if (m.isDestroyed) continue
-            // Smaller meat hitbox
             val mw = meatDrawWidthPx
             val mh = meatDrawHeightPx
             val insetX = mw * meatHitboxInsetXRatio
@@ -842,13 +804,13 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             if (RectF.intersects(playerBoxRect, meatRect)) {
                 m.isDestroyed = true
                 hasShield = true
-                shieldPulseTimer = System.currentTimeMillis() // Reset pulse timer when shield is gained
+                shieldPulseTimer = System.currentTimeMillis()
+                playMeatSound()
             }
         }
         meats.removeAll { it.isDestroyed }
     }
 
-    // ==================== UPDATE ====================
     private fun updateCharacterState() {
         isMoving = movingDirection != null
 
@@ -861,22 +823,19 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 Direction.DOWN -> characterY += speed
                 Direction.LEFT -> {
                     characterX -= speed
-                    facingLeft = true // quay mặt trái
+                    facingLeft = true
                 }
-
                 Direction.RIGHT -> {
                     characterX += speed
-                    facingLeft = false // quay mặt phải
+                    facingLeft = false
                 }
             }
 
-            // Giới hạn trong màn hình và phát âm thanh khi chạm tường
             val maxX = width - runFrameWidth * scale
             val maxY = height - runFrameHeight * scale
             val newX = characterX.coerceIn(0f, maxX)
             val newY = characterY.coerceIn(0f, maxY)
 
-            // Kiểm tra xem có chạm tường không
             val hitWall = (newX != characterX) || (newY != characterY)
             if (hitWall) {
                 val now = System.currentTimeMillis()
@@ -913,9 +872,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 currentFrame = (currentFrame + 1) % total
                 frameTimer = now
 
-                // Archer: bắn tên ở frame 6
                 if (isAttacking && currentAttackType == AttackType.ARCHER) {
-                    val attackHitFrameIndex = 6
                     if (!hasFiredArrowThisAttack) {
                         val arrowStartX = if (facingLeft) characterX else characterX + runFrameWidth * scale - (arrowBitmap.width * arrowScale) * 0.25f
                         val playerCenterY = characterY + (runFrameHeight * scale) / 2f
@@ -930,19 +887,19 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                             )
                         )
                         hasFiredArrowThisAttack = true
-                        playAttackSound()
+                        playArcherSound()
                     }
                     if (currentFrame == total - 1) {
                         post { isAttacking = false; currentAttackType = AttackType.NONE }
                     }
                 }
 
-                // Melee: gây sát thương ở frame 4
                 if (isAttacking && currentAttackType == AttackType.WARRIOR) {
-                    val hitFrame = 3
+                    val hitFrame = 1
                     if (!meleeDamageApplied && currentFrame == hitFrame) {
                         applyMeleeDamage()
                         meleeDamageApplied = true
+                        playWarriorSound()
                     }
                     if (currentFrame == total - 1) {
                         post { isAttacking = false; currentAttackType = AttackType.NONE; meleeDamageApplied = false }
@@ -950,10 +907,11 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 }
 
                 if (isAttacking && currentAttackType == AttackType.LANCER) {
-                    val hitFrame = 2
+                    val hitFrame = 1
                     if (!meleeDamageApplied && currentFrame == hitFrame) {
                         applyMeleeDamage()
                         meleeDamageApplied = true
+                        playLancerSound()
                     }
                     if (currentFrame == total - 1) {
                         post { isAttacking = false; currentAttackType = AttackType.NONE; meleeDamageApplied = false }
@@ -973,7 +931,6 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         val top = characterY + (height - meleeHeight) / 2f
         val left = if (facingLeft) characterX - meleeWidth * 0.2f else characterX + width - meleeWidth * 0.8f
         val rect = RectF(left, top, left + meleeWidth, top + meleeHeight)
-        // Apply melee damage depending on attack type
         val killed = ArrayList<Enemy>()
         for (enemy in enemies) {
             if (enemy.isDestroyed) continue
@@ -985,11 +942,8 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             }
         }
         if (killed.isNotEmpty()) {
-            // Drop items from killed enemies
             killed.forEach { maybeDropItem(it) }
             enemies.removeAll(killed)
-
-            // Increase kill count
             enemiesKilled += killed.size
             killsThisLevel += killed.size
 
@@ -1005,20 +959,17 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private fun updateEnemies() {
         val now = System.currentTimeMillis()
 
-        // Quản lý số lượng quái: đảm bảo tối thiểu và thay thế ngay khi bị tiêu diệt
         val aliveBefore = enemies.count { !it.isDestroyed }
         if (aliveBefore < minEnemiesAtStart) {
-            // Bổ sung để đủ số lượng tối thiểu
             val toSpawn = minEnemiesAtStart - aliveBefore
             repeat(toSpawn) {
                 val types = listOf(Enemy.Type.TORCH, Enemy.Type.WARRIOR, Enemy.Type.TNT)
                 spawnEnemy(types.random())
             }
         } else if (aliveBefore < previousAliveEnemies && aliveBefore < effectiveMaxEnemies()) {
-            // Trường hợp có kẻ địch bị diệt, sẽ respawn trong applyMeleeDamage hoặc checkEnemyHit
+            // Handled in applyMeleeDamage or checkEnemyHit
         }
 
-        // Update positions and check collisions
         playerBoxRect.set(
             characterX,
             characterY,
@@ -1028,7 +979,6 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
         for (enemy in enemies) {
             if (enemy.isDestroyed) continue
-            // Di chuyển ngang một hướng cố định, wrap khi qua rìa
             if (enemy.state != Enemy.State.ATTACK) {
                 val speed = enemy.speedPxPerFrame * currentLevel.enemySpeedMultiplier
                 if (enemy.movingLeft) {
@@ -1043,17 +993,14 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 val fwMove = (cfgMove.moveSheet.width / cfgMove.moveColumns)
                 val spriteWidth = fwMove * cfgMove.scale
                 val quickOffset = spriteWidth * 0.25f
-                // Nếu ra khỏi rìa trái, xuất hiện bên phải (vào nhanh hơn một chút)
                 if (enemy.x + spriteWidth < 0f) {
                     enemy.x = width.toFloat() - quickOffset
                 }
-                // Nếu ra khỏi rìa phải, xuất hiện bên trái (vào nhanh hơn một chút)
                 if (enemy.x > width.toFloat()) {
                     enemy.x = -spriteWidth + quickOffset
                 }
             }
 
-            // Khoảng cách theo cả X và Y
             val cfgForRange = getConfig(enemy.type)
             val fwRange = (cfgForRange.moveSheet.width / cfgForRange.moveColumns)
             val fhRange = cfgForRange.moveSheet.height
@@ -1066,18 +1013,13 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             val attackRangeX = fwRange * cfgForRange.scale * 0.6f
             val attackRangeY = fhRange * cfgForRange.scale * 0.6f
 
-            // Xác định state
             val shouldAttack = distX < attackRangeX && distY < attackRangeY
 
-            // Nếu đang tấn công, phải hoàn thành animation trước khi thay đổi hành động
             if (enemy.state == Enemy.State.ATTACK) {
-                // Giữ nguyên trạng thái ATTACK cho đến khi animation kết thúc
                 if (shouldAttack) {
                     enemy.facingLeft = playerCenterX < enemyCenterX
                 }
-                // Không thay đổi state, đợi animation hoàn thành
             } else {
-                // Chỉ thay đổi hành động khi không đang tấn công
                 if (shouldAttack) {
                     enemy.state = Enemy.State.ATTACK
                     enemy.facingLeft = playerCenterX < enemyCenterX
@@ -1086,7 +1028,6 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 }
             }
 
-            // Cập nhật frame animation
             val cfgForAnim = getConfig(enemy.type)
             val duration = cfgForAnim.frameDurationMs
             if (now - enemy.frameTimerMs > duration) {
@@ -1101,7 +1042,6 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                     if (enemy.currentFrame == 0) {
                         if (enemy.state == Enemy.State.ATTACK) {
                             enemy.attackReady = true
-                            // Hoàn thành animation tấn công, chuyển về MOVE
                             enemy.state = Enemy.State.MOVE
                         }
                         enemy.dealtDamageThisAttack = false
@@ -1112,7 +1052,6 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 enemy.frameTimerMs = now
             }
 
-            // Enemy attacks on contact
             getEnemyHitboxInto(enemy, enemyHitboxRect)
             if (RectF.intersects(playerBoxRect, enemyHitboxRect)) {
                 val canDamage = if (enemy.state == Enemy.State.ATTACK) (enemy.attackReady && !enemy.dealtDamageThisAttack) else now - lastHitTime > hitCooldownMs
@@ -1125,10 +1064,11 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                         val actual = if (isGuarding) (incoming * guardDamageMultiplier).coerceAtLeast(0f) else incoming
                         Log.d(TAG, "updateEnemies: $actual")
                         playerHealth = (playerHealth - actual).coerceAtLeast(0f)
+                        lastHitTime = now
+                        lastDamageFlashAt = now
+                        playHurtSound()
+                        Log.d(TAG, "Player bị tấn công! Máu còn: $playerHealth")
                     }
-                    lastHitTime = now
-                    lastDamageFlashAt = now
-                    Log.d(TAG, "Player bị tấn công! Máu còn: $playerHealth")
                     if (enemy.state == Enemy.State.ATTACK) {
                         enemy.dealtDamageThisAttack = true
                         enemy.attackReady = false
@@ -1137,13 +1077,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             }
         }
 
-        // Remove destroyed enemies, giữ lại để wrap-around khi ra khỏi màn hình
         enemies.removeAll { it.isDestroyed }
 
-        // Nếu ít hơn tối đa, có thể spawn thêm để đạt maxEnemies
         val aliveAfter = enemies.count { !it.isDestroyed }
         if (aliveAfter < effectiveMaxEnemies()) {
-            // Bổ sung để đạt số lượng tối đa của level
             val toSpawn = effectiveMaxEnemies() - aliveAfter
             repeat(toSpawn) {
                 val types = listOf(Enemy.Type.TORCH, Enemy.Type.WARRIOR, Enemy.Type.TNT)
@@ -1162,13 +1099,11 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             val dx = if (arrow.movingLeft) -arrow.speedPxPerFrame else arrow.speedPxPerFrame
             arrow.x += dx
 
-            // Remove when off-screen
             if (arrow.x + arrowBitmap.width * arrowScale < 0f || arrow.x > width) {
                 iterator.remove()
                 continue
             }
 
-            // Check collision with enemies
             val arrowRect = RectF(
                 arrow.x,
                 arrow.y,
@@ -1179,12 +1114,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 if (enemy.isDestroyed) continue
                 getEnemyHitboxInto(enemy, enemyHitboxRect)
                 if (RectF.intersects(arrowRect, enemyHitboxRect)) {
-                    // Archer damage
                     enemy.health = (enemy.health - damageArcher).coerceAtLeast(0)
                     if (enemy.health == 0) {
                         enemy.isDestroyed = true
                         maybeDropItem(enemy)
-                        // Increase kill count
                         enemiesKilled++
                         killsThisLevel++
                     }
@@ -1212,10 +1145,9 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                     continue
                 }
             }
-            // Check for damage at specific frame
             if (explosion.currentFrame == explosionDamageFrame && !explosion.hasDealtDamage) {
                 explosion.hasDealtDamage = true
-                // Calculate distance to player
+                playExplosionSound()
                 val explosionCenterX = explosion.x + (explosionFrameWidth * explosionScale) / 2f
                 val explosionCenterY = explosion.y + (explosionFrameHeight * explosionScale) / 2f
                 val playerCenterX = characterX + (runFrameWidth * scale) / 2f
@@ -1224,7 +1156,6 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 val distY = abs(playerCenterY - explosionCenterY)
                 val distance = kotlin.math.sqrt(distX * distX + distY * distY)
                 if (distance <= explosionRadius) {
-                    // Apply damage similar to enemy attack
                     if (hasShield) {
                         hasShield = false
                         Log.d(TAG, "Shield absorbed explosion damage!")
@@ -1232,6 +1163,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                         val actualDamage = if (isGuarding) (explosionDamage * guardDamageMultiplier).coerceAtLeast(0f) else explosionDamage
                         playerHealth = (playerHealth - actualDamage).coerceAtLeast(0f)
                         lastDamageFlashAt = now
+                        playHurtSound()
                         Log.d(TAG, "Player hit by explosion! Health left: $playerHealth")
                     }
                 }
@@ -1239,7 +1171,6 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         }
     }
 
-    // ==================== CONTROL ====================
     fun startMoving(direction: Direction) {
         movingDirection = direction
     }
@@ -1248,7 +1179,6 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         movingDirection = null
     }
 
-    // Backward-compatible default attack -> Archer
     fun attack() { attackArcher() }
 
     fun attackWarrior() {
@@ -1284,7 +1214,6 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         isGuarding = false
     }
 
-    // ==================== GAME OVER ====================
     private fun showGameOverScreen() {
         val intent = Intent(context, GameOverActivity::class.java)
         context.startActivity(intent)
@@ -1300,35 +1229,24 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     }
 
     fun resetGame() {
-        // Reset player state
         playerHealth = playerMaxHealth
         isGameOver = false
         isGameWon = false
         hasShield = false
-
-        // Reset win condition tracking
         enemiesKilled = 0
         currentLevelIndex = 0
         killsThisLevel = 0
         gameStartTime = System.currentTimeMillis()
-
-        // Reset character position
         setupCharacterPosition(height)
-
-        // Clear and respawn enemies
         enemies.clear()
         spawnEnemy(Enemy.Type.TORCH)
         spawnEnemy(Enemy.Type.WARRIOR)
         spawnEnemy(Enemy.Type.TNT)
         previousAliveEnemies = enemies.count { !it.isDestroyed }
-
-        // Clear arrows, mushrooms, meats, explosions
         arrows.clear()
         mushrooms.clear()
         meats.clear()
         explosions.clear()
-
-        // Reset character state
         isMoving = false
         isAttacking = false
         isGuarding = false
@@ -1338,15 +1256,9 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         lastHitTime = 0L
         hasFiredArrowThisAttack = false
         meleeDamageApplied = false
-
-        // Reset shield pulse timer
         shieldPulseTimer = System.currentTimeMillis()
-
-        // Restart the game loop
         postInvalidateOnAnimation()
     }
-
-    // ==================== COLLISION ====================
 
     private fun getEnemyHitboxInto(enemy: Enemy, outRect: RectF) {
         val cfg = getConfig(enemy.type)
@@ -1366,16 +1278,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
     private fun maybeDropItem(enemy: Enemy) {
         val effectiveDropBonus = currentLevel.dropBonus
-
-        // Roll for mushroom
         val mushroomRoll = Math.random().toFloat()
         if (mushroomRoll <= mushroomDropChance * effectiveDropBonus) {
-            val dropX = (enemy.x + enemyDstRect.width() * 0.5f).coerceIn(0f,
-                (width - mushroomDrawWidthPx).coerceAtLeast(0f)
-            )
-            val dropY = (enemy.y + enemyDstRect.height() * 0.5f).coerceIn(0f,
-                (height - mushroomDrawHeightPx).coerceAtLeast(0f)
-            )
+            val dropX = (enemy.x + enemyDstRect.width() * 0.5f).coerceIn(0f, (width - mushroomDrawWidthPx).coerceAtLeast(0f))
+            val dropY = (enemy.y + enemyDstRect.height() * 0.5f).coerceIn(0f, (height - mushroomDrawHeightPx).coerceAtLeast(0f))
             mushrooms.add(
                 MapItem(
                     id = "mush_${System.currentTimeMillis()}",
@@ -1386,15 +1292,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             )
         }
 
-        // Roll for meat
         val meatRoll = Math.random().toFloat()
         if (meatRoll <= meatDropChance * effectiveDropBonus) {
-            val dropX = (enemy.x + enemyDstRect.width() * 0.5f).coerceIn(0f,
-                (width - meatDrawWidthPx).coerceAtLeast(0f)
-            )
-            val dropY = (enemy.y + enemyDstRect.height() * 0.5f).coerceIn(0f,
-                (height - meatDrawHeightPx).coerceAtLeast(0f)
-            )
+            val dropX = (enemy.x + enemyDstRect.width() * 0.5f).coerceIn(0f, (width - meatDrawWidthPx).coerceAtLeast(0f))
+            val dropY = (enemy.y + enemyDstRect.height() * 0.5f).coerceIn(0f, (height - meatDrawHeightPx).coerceAtLeast(0f))
             meats.add(
                 MapItem(
                     id = "meat_${System.currentTimeMillis()}",
@@ -1405,7 +1306,6 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             )
         }
 
-        // Roll for explosion
         val explosionRoll = Math.random()
         if (explosionRoll < currentLevel.explosionChance) {
             val explosionX = enemy.x + (enemyDstRect.width() / 2f) - (explosionFrameWidth * explosionScale / 2f)
@@ -1442,21 +1342,73 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         enemies.add(enemy)
     }
 
-    private fun playAttackSound() {
+    private fun playWarriorSound() {
         if (!isEnabledSound) return
         try {
-            attackPlayer?.seekTo(0)
-            attackPlayer?.play()
+            soundPool?.play(swordSoundId, 1f, 1f, 1, 0, 1f)
         } catch (e: Exception) {
-            Log.e(TAG, "Error playing attack sound", e)
+            Log.e(TAG, "Error playing warrior sound", e)
+        }
+    }
+
+    private fun playLancerSound() {
+        if (!isEnabledSound) return
+        try {
+            soundPool?.play(lancerSoundId, 1f, 1f, 1, 0, 1f)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error playing lancer sound", e)
+        }
+    }
+
+    private fun playArcherSound() {
+        if (!isEnabledSound) return
+        try {
+            soundPool?.play(hitSoundId, 1f, 1f, 1, 0, 1f)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error playing archer sound", e)
+        }
+    }
+
+    private fun playExplosionSound() {
+        if (!isEnabledSound) return
+        try {
+            soundPool?.play(explosionSoundId, 1f, 1f, 1, 0, 1f)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error playing explosion sound", e)
+        }
+    }
+
+    private fun playHealSound() {
+        if (!isEnabledSound) return
+        try {
+            soundPool?.play(healSoundId, 1f, 1f, 1, 0, 1f)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error playing heal sound", e)
+        }
+    }
+
+    private fun playMeatSound() {
+        if (!isEnabledSound) return
+        try {
+            soundPool?.play(meatSoundId, 1f, 1f, 1, 0, 1f)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error playing meat sound", e)
+        }
+    }
+
+    private fun playHurtSound() {
+        if (!isEnabledSound) return
+        try {
+            soundPool?.play(hurtSoundId, 1f, 1f, 1, 0, 1f)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error playing hurt sound", e)
         }
     }
 
     private fun playWallHitSound() {
         if (!isEnabledSound) return
         try {
-            hitSoundPlayer?.seekTo(0)
-            hitSoundPlayer?.play()
+            soundPool?.play(wallHitSoundId, 1f, 1f, 1, 0, 1f)
         } catch (e: Exception) {
             Log.e(TAG, "Error playing wall hit sound", e)
         }
@@ -1467,14 +1419,11 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     }
 
     private fun advanceLevel() {
-        // Move to next level or win if last
         if (currentLevelIndex < levels.size - 1) {
             currentLevelIndex += 1
             killsThisLevel = 0
-            // Rebalance live enemies to match new maxEnemies
             val aliveEnemies = enemies.count { !it.isDestroyed }
             if (aliveEnemies < effectiveMaxEnemies()) {
-                // Spawn additional enemies to reach new maxEnemies
                 val toSpawn = effectiveMaxEnemies() - aliveEnemies
                 repeat(toSpawn) {
                     val types = listOf(Enemy.Type.TORCH, Enemy.Type.WARRIOR, Enemy.Type.TNT)
@@ -1482,7 +1431,6 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                     spawnEnemy(typeToSpawn)
                 }
             } else if (aliveEnemies > effectiveMaxEnemies()) {
-                // Remove excess enemies if current count exceeds new max
                 while (enemies.count { !it.isDestroyed } > effectiveMaxEnemies()) {
                     val idx = enemies.indexOfFirst { !it.isDestroyed }
                     if (idx >= 0) enemies.removeAt(idx) else break
