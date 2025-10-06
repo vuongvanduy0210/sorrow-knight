@@ -16,7 +16,7 @@ class ScrollingBackgroundView(context: Context, attrs: AttributeSet? = null) : V
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { isFilterBitmap = true }
 
     private var backgroundBitmap: Bitmap =
-        BitmapFactory.decodeResource(resources, R.drawable.img_bg)
+        BitmapFactory.decodeResource(resources, R.drawable.img_bg_1)
     private var scaledBitmap: Bitmap? = null // Bitmap đã được scale
 
     // Scroll position
@@ -64,6 +64,25 @@ class ScrollingBackgroundView(context: Context, attrs: AttributeSet? = null) : V
 
         // Yêu cầu vẽ frame tiếp theo
         postInvalidateOnAnimation()
+    }
+
+    fun setBackgroundByLevel(levelIndex: Int) {
+        val drawableRes = when (levelIndex) {
+            0 -> R.drawable.img_bg_1
+            1 -> R.drawable.img_bg_2
+            else -> R.drawable.img_bg_3
+        }
+        // Recycle previous bitmaps
+        scaledBitmap?.recycle()
+        backgroundBitmap.recycle()
+        // Load new and scale
+        backgroundBitmap = BitmapFactory.decodeResource(resources, drawableRes)
+        if (width > 0 && height > 0) {
+            scaledBitmap = backgroundBitmap.scale(width, height)
+        } else {
+            scaledBitmap = null
+        }
+        invalidate()
     }
 
     override fun onDetachedFromWindow() {

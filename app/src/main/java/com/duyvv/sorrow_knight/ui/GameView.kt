@@ -90,7 +90,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     // Vị trí nhân vật
     private var characterX = 0f
     private var characterY = 0f
-    private val speed = 7f
+    private val baseSpeed = 7f
     private val scale = 0.25f
 
     // Hướng nhân vật (quay mặt)
@@ -230,6 +230,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         val killTarget: Int,
         val maxEnemies: Int,
         val enemySpeedMultiplier: Float,
+        val playerSpeedMultiplier: Float,
         val dropBonus: Float,
         val explosionChance: Float,
         val maxHealthEnemy: Int
@@ -237,9 +238,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private val levels = listOf(
         LevelConfig(
             name = "Level 1",
-            killTarget = 5,
+            killTarget = 1,
             maxEnemies = 3,
             enemySpeedMultiplier = 1.0f,
+            playerSpeedMultiplier = 1.0f,
             dropBonus = 1.0f,
             explosionChance = 1f,
             maxHealthEnemy = 10
@@ -249,6 +251,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             killTarget = 1,
             maxEnemies = 3,
             enemySpeedMultiplier = 1.1f,
+            playerSpeedMultiplier = 1.3f,
             dropBonus = 1.1f,
             explosionChance = 0.2f,
             maxHealthEnemy = 12
@@ -258,6 +261,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             killTarget = 1,
             maxEnemies = 3,
             enemySpeedMultiplier = 1.2f,
+            playerSpeedMultiplier = 1.5f,
             dropBonus = 1.2f,
             explosionChance = 0.3f,
             maxHealthEnemy = 15
@@ -347,6 +351,80 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private var gameStartTime = 0L
     private var isGameWon = false
 
+    // ==================== UNLOCKS ====================
+    interface OnUnlockStateChangeListener {
+        fun onUnlockStateChanged(state: UnlockState)
+    }
+
+    data class UnlockState(
+        val archerUnlocked: Boolean,
+        val warriorUnlocked: Boolean,
+        val lancerUnlocked: Boolean,
+        val guardUnlocked: Boolean
+    )
+
+    private var onUnlockStateChangeListener: OnUnlockStateChangeListener? = null
+
+    fun setOnUnlockStateChangeListener(listener: OnUnlockStateChangeListener?) {
+        onUnlockStateChangeListener = listener
+        // Push current state immediately
+        notifyUnlockState()
+    }
+
+    // Configure which level each skill is unlocked at (1-based levels)
+    private val unlockLevelArcher = 2
+    private val unlockLevelWarrior = 1
+    private val unlockLevelLancer = 3
+    private val unlockLevelGuard = 3
+
+    private fun isArcherUnlocked(): Boolean = currentLevelIndex + 1 >= unlockLevelArcher
+    private fun isWarriorUnlocked(): Boolean = currentLevelIndex + 1 >= unlockLevelWarrior
+    private fun isLancerUnlocked(): Boolean = currentLevelIndex + 1 >= unlockLevelLancer
+    private fun isGuardUnlocked(): Boolean = currentLevelIndex + 1 >= unlockLevelGuard
+
+    private fun notifyUnlockState() {
+        onUnlockStateChangeListener?.onUnlockStateChanged(
+            UnlockState(
+                archerUnlocked = isArcherUnlocked(),
+                warriorUnlocked = isWarriorUnlocked(),
+                lancerUnlocked = isLancerUnlocked(),
+                guardUnlocked = isGuardUnlocked()
+            )
+        )
+    }
+
+    // ==================== LEVEL TRANSITION ====================
+    private var isInLevelTransition = false
+    private var levelTransitionEndsAtMs = 0L
+    private val levelTransitionDurationMs = 1500L
+    private val levelOverlayBgPaint = Paint().apply {
+        color = Color.argb(180, 0, 0, 0)
+        style = Paint.Style.FILL
+        isAntiAlias = true
+    }
+    private val levelOverlayTextPaint = Paint().apply {
+        color = Color.WHITE
+        textSize = 48f
+        isAntiAlias = true
+        typeface = ResourcesCompat.getFont(context, R.font.rebellionsquad_zpprz)
+        setShadowLayer(2f, 2f, 2f, Color.BLACK)
+        textAlign = Paint.Align.CENTER
+    }
+    private val levelOverlayButtonPaint = Paint().apply {
+        color = Color.rgb(30, 144, 255)
+        style = Paint.Style.FILL
+        isAntiAlias = true
+    }
+    private val levelOverlayButtonTextPaint = Paint().apply {
+        color = Color.WHITE
+        textSize = 32f
+        isAntiAlias = true
+        typeface = ResourcesCompat.getFont(context, R.font.rebellionsquad_zpprz)
+        setShadowLayer(2f, 2f, 2f, Color.BLACK)
+        textAlign = Paint.Align.CENTER
+    }
+    private val levelTransitionButtonRect = RectF()
+
     // ==================== Lifecycle ====================
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
@@ -362,6 +440,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         isGameWon = false
         currentLevelIndex = 0
         killsThisLevel = 0
+        try {
+            val parent = rootView.findViewById<ScrollingBackgroundView>(R.id.scrollingBackground)
+            parent?.setBackgroundByLevel(currentLevelIndex)
+        } catch (_: Exception) {}
     }
 
     fun initAudio() {
@@ -390,6 +472,26 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         soundPool = null
     }
 
+    override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
+        if (isInLevelTransition) {
+            if (event.action == android.view.MotionEvent.ACTION_UP) {
+                val x = event.x
+                val y = event.y
+                if (levelTransitionButtonRect.contains(x, y)) {
+                    // If we reached kill target, actually advance level here
+                    if (killsThisLevel >= currentLevel.killTarget) {
+                        advanceLevel()
+                    }
+                    // If no more levels or not ready, just close overlay
+                    isInLevelTransition = false
+                    return true
+                }
+            }
+            return true
+        }
+        return super.onTouchEvent(event)
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
@@ -399,12 +501,9 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             return
         }
 
-        if (!isGameOver && !isGameWon && killsThisLevel >= currentLevel.killTarget) {
-            advanceLevel()
-            if (isGameWon) {
-                showVictoryScreen()
-                return
-            }
+        // Disable auto-advance; instead, show transition overlay when ready
+        if (!isGameOver && !isGameWon && killsThisLevel >= currentLevel.killTarget && !isInLevelTransition) {
+            isInLevelTransition = true
         }
         if (isGameWon && !isGameOver) {
             showVictoryScreen()
@@ -415,11 +514,16 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             return
         }
 
-        updateCharacterState()
-        updateAnimationFrame()
-        updateEnemies()
-        updateArrows()
-        updateItems()
+        // While in transition, keep paused until user taps Next
+        val now = System.currentTimeMillis()
+
+        if (!isInLevelTransition) {
+            updateCharacterState()
+            updateAnimationFrame()
+            updateEnemies()
+            updateArrows()
+            updateItems()
+        }
         updateExplosions()
 
         drawEnemies(canvas)
@@ -434,7 +538,37 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         drawLevelHud(canvas)
         drawDamageFlash(canvas)
 
+        if (isInLevelTransition) {
+            drawLevelTransitionOverlay(canvas)
+        }
+
         postInvalidateOnAnimation()
+    }
+
+    private fun drawLevelTransitionOverlay(canvas: Canvas) {
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), levelOverlayBgPaint)
+        val title = currentLevel.name
+        val subtitle = if (killsThisLevel >= currentLevel.killTarget) "Ready to advance" else "Get Ready!"
+        val centerX = width / 2f
+        val centerY = height / 2f
+        canvas.drawText(title, centerX, centerY - 10f, levelOverlayTextPaint)
+        levelOverlayTextPaint.textSize = 28f
+        canvas.drawText(subtitle, centerX, centerY + 28f, levelOverlayTextPaint)
+        levelOverlayTextPaint.textSize = 48f
+
+        // Draw Next button
+        val btnWidth = 200f
+        val btnHeight = 64f
+        levelTransitionButtonRect.set(
+            centerX - btnWidth / 2f,
+            centerY + 60f,
+            centerX + btnWidth / 2f,
+            centerY + 60f + btnHeight
+        )
+        // Button background (rounded)
+        canvas.drawRoundRect(levelTransitionButtonRect, 16f, 16f, levelOverlayButtonPaint)
+        // Button text
+        canvas.drawText("Next", levelTransitionButtonRect.centerX(), levelTransitionButtonRect.centerY() + 11f, levelOverlayButtonTextPaint)
     }
 
     // ==================== INIT ====================
@@ -817,6 +951,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         movingDirection?.let { dir ->
             val oldX = characterX
             val oldY = characterY
+            val speed = baseSpeed * currentLevel.playerSpeedMultiplier
 
             when (dir) {
                 Direction.UP -> characterY -= speed
@@ -1181,7 +1316,14 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
     fun attack() { attackArcher() }
 
+    fun advanceLevelByButton() {
+        if (isGameWon) return
+        if (isInLevelTransition) return
+        advanceLevel()
+    }
+
     fun attackWarrior() {
+        if (!isWarriorUnlocked()) return
         isAttacking = true
         currentAttackType = AttackType.WARRIOR
         currentFrame = 0
@@ -1190,6 +1332,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     }
 
     fun attackArcher() {
+        if (!isArcherUnlocked()) return
         isAttacking = true
         currentAttackType = AttackType.ARCHER
         currentFrame = 0
@@ -1198,6 +1341,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     }
 
     fun attackLancer() {
+        if (!isLancerUnlocked()) return
         isAttacking = true
         currentAttackType = AttackType.LANCER
         currentFrame = 0
@@ -1206,6 +1350,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     }
 
     fun startGuarding() {
+        if (!isGuardUnlocked()) return
         isGuarding = true
         currentFrame = 0
     }
@@ -1258,6 +1403,13 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         meleeDamageApplied = false
         shieldPulseTimer = System.currentTimeMillis()
         postInvalidateOnAnimation()
+        // Notify UI after reset (level and unlocks changed)
+        notifyUnlockState()
+        // Reset background to level 0
+        try {
+            val parent = rootView.findViewById<ScrollingBackgroundView>(R.id.scrollingBackground)
+            parent?.setBackgroundByLevel(currentLevelIndex)
+        } catch (_: Exception) {}
     }
 
     private fun getEnemyHitboxInto(enemy: Enemy, outRect: RectF) {
@@ -1335,7 +1487,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             bitmap = cfg.idleSheet,
             type = type,
             speedPxPerFrame = 10f * currentLevel.enemySpeedMultiplier,
-            health = 10,
+            health = currentLevel.maxHealthEnemy,
             maxHealth = currentLevel.maxHealthEnemy
         )
         enemy.movingLeft = listOf(true, false).random()
@@ -1437,8 +1589,46 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 }
             }
             previousAliveEnemies = enemies.count { !it.isDestroyed }
+            // Notify UI about possible unlock changes after level up
+            notifyUnlockState()
+            // Reset full gameplay state for the new level
+            resetStateForNewLevel()
+            // Trigger level transition overlay and pause updates until user taps
+            isInLevelTransition = true
+            levelTransitionEndsAtMs = Long.MAX_VALUE
+            // Update background by level
+            try {
+                val parent = rootView.findViewById<ScrollingBackgroundView>(R.id.scrollingBackground)
+                parent?.setBackgroundByLevel(currentLevelIndex)
+            } catch (_: Exception) {}
         } else {
             isGameWon = true
         }
+    }
+
+    private fun resetStateForNewLevel() {
+        playerHealth = playerMaxHealth
+        hasShield = false
+        setupCharacterPosition(height)
+        enemies.clear()
+        // Spawn initial enemies for the level
+        spawnEnemy(Enemy.Type.TORCH)
+        spawnEnemy(Enemy.Type.WARRIOR)
+        spawnEnemy(Enemy.Type.TNT)
+        previousAliveEnemies = enemies.count { !it.isDestroyed }
+        arrows.clear()
+        mushrooms.clear()
+        meats.clear()
+        explosions.clear()
+        isMoving = false
+        isAttacking = false
+        isGuarding = false
+        movingDirection = null
+        currentAttackType = AttackType.NONE
+        currentFrame = 0
+        lastHitTime = 0L
+        hasFiredArrowThisAttack = false
+        meleeDamageApplied = false
+        shieldPulseTimer = System.currentTimeMillis()
     }
 }

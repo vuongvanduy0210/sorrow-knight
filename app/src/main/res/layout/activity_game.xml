@@ -165,6 +165,8 @@
         app:layout_constraintTop_toTopOf="parent"
         app:track="@drawable/track" />
 
+    
+
     <androidx.appcompat.widget.SwitchCompat
         android:id="@+id/switchSoundBackground"
         android:layout_width="wrap_content"

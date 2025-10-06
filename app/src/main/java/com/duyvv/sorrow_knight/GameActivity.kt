@@ -23,6 +23,16 @@ class GameActivity : BaseActivity<ActivityGameBinding>(
         setupControls()
         playSound()
 
+        // Subscribe to unlock state changes
+        binding.gameView.setOnUnlockStateChangeListener(object : GameView.OnUnlockStateChangeListener {
+            override fun onUnlockStateChanged(state: GameView.UnlockState) {
+                binding.btnAttackArcher.isEnabled = state.archerUnlocked
+                binding.btnAttackWarrior.isEnabled = state.warriorUnlocked
+                binding.btnAttackLancer.isEnabled = state.lancerUnlocked
+                binding.btnGuard.isEnabled = state.guardUnlocked
+            }
+        })
+
         // Check if we need to reset the game (from GameOver screen)
         if (intent.getBooleanExtra("reset_game", false)) {
             binding.gameView.resetGame()
