@@ -238,8 +238,8 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private val levels = listOf(
         LevelConfig(
             name = "Level 1",
-            killTarget = 1,
-            maxEnemies = 3,
+            killTarget = 2,
+            maxEnemies = 4,
             enemySpeedMultiplier = 1.0f,
             playerSpeedMultiplier = 1.0f,
             dropBonus = 1.0f,
@@ -248,8 +248,8 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         ),
         LevelConfig(
             name = "Level 2",
-            killTarget = 1,
-            maxEnemies = 3,
+            killTarget = 3,
+            maxEnemies = 5,
             enemySpeedMultiplier = 1.1f,
             playerSpeedMultiplier = 1.3f,
             dropBonus = 1.1f,
@@ -258,8 +258,8 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         ),
         LevelConfig(
             name = "Level 3",
-            killTarget = 1,
-            maxEnemies = 3,
+            killTarget = 5,
+            maxEnemies = 7,
             enemySpeedMultiplier = 1.2f,
             playerSpeedMultiplier = 1.5f,
             dropBonus = 1.2f,
