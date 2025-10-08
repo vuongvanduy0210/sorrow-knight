@@ -233,7 +233,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         val playerSpeedMultiplier: Float,
         val dropBonus: Float,
         val explosionChance: Float,
-        val maxHealthEnemy: Int
+        val maxHealthEnemy: Int,
+        val chaseEnabled: Boolean,
+        val chaseDurationMs: Long,
+        val chaseRefreshOnReenter: Boolean
     )
     private val levels = listOf(
         LevelConfig(
@@ -244,7 +247,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             playerSpeedMultiplier = 1.0f,
             dropBonus = 1.0f,
             explosionChance = 1f,
-            maxHealthEnemy = 10
+            maxHealthEnemy = 10,
+            chaseEnabled = false,
+            chaseDurationMs = 0L,
+            chaseRefreshOnReenter = false
         ),
         LevelConfig(
             name = "Level 2",
@@ -254,7 +260,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             playerSpeedMultiplier = 1.3f,
             dropBonus = 1.1f,
             explosionChance = 0.2f,
-            maxHealthEnemy = 12
+            maxHealthEnemy = 12,
+            chaseEnabled = true,
+            chaseDurationMs = 5000L,
+            chaseRefreshOnReenter = false
         ),
         LevelConfig(
             name = "Level 3",
@@ -264,7 +273,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             playerSpeedMultiplier = 1.5f,
             dropBonus = 1.2f,
             explosionChance = 0.3f,
-            maxHealthEnemy = 15
+            maxHealthEnemy = 15,
+            chaseEnabled = true,
+            chaseDurationMs = 5000L,
+            chaseRefreshOnReenter = false
         )
     )
     private var currentLevelIndex = 0
@@ -396,7 +408,6 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     // ==================== LEVEL TRANSITION ====================
     private var isInLevelTransition = false
     private var levelTransitionEndsAtMs = 0L
-    private val levelTransitionDurationMs = 1500L
     private val levelOverlayBgPaint = Paint().apply {
         color = Color.argb(180, 0, 0, 0)
         style = Paint.Style.FILL
@@ -1116,16 +1127,58 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             if (enemy.isDestroyed) continue
             if (enemy.state != Enemy.State.ATTACK) {
                 val speed = enemy.speedPxPerFrame * currentLevel.enemySpeedMultiplier
-                if (enemy.movingLeft) {
-                    enemy.x -= speed
-                    enemy.facingLeft = true
-                } else {
-                    enemy.x += speed
-                    enemy.facingLeft = false
-                }
 
+                // Prepare chase/patrol decision
                 val cfgMove = getConfig(enemy.type)
                 val fwMove = (cfgMove.moveSheet.width / cfgMove.moveColumns)
+                val fhMove = cfgMove.moveSheet.height
+                val enemyCenterX = enemy.x + (fwMove * cfgMove.scale) / 2f
+                val enemyCenterY = enemy.y + (fhMove * cfgMove.scale) / 2f
+                val playerCenterX = characterX + (runFrameWidth * scale) / 2f
+                val playerCenterY = characterY + (runFrameHeight * scale) / 2f
+
+                // Detection & timed aggro based on attack range with per-level config
+                val dx = playerCenterX - enemyCenterX
+                val dy = playerCenterY - enemyCenterY
+                val distance = kotlin.math.hypot(dx.toDouble(), dy.toDouble()).toFloat()
+                val attackRangeXForAggro = fwMove * cfgMove.scale * 0.6f
+                val attackRangeYForAggro = fhMove * cfgMove.scale * 0.6f
+                val distXForAggro = abs(dx)
+                val distYForAggro = abs(dy)
+                if (currentLevel.chaseEnabled && distXForAggro < attackRangeXForAggro && distYForAggro < attackRangeYForAggro) {
+                    val until = now + currentLevel.chaseDurationMs
+                    if (currentLevel.chaseRefreshOnReenter) {
+                        if (until > enemy.aggroUntilMs) enemy.aggroUntilMs = until
+                    } else {
+                        if (enemy.aggroUntilMs <= now) enemy.aggroUntilMs = until
+                    }
+                }
+
+                if (currentLevel.chaseEnabled && now < enemy.aggroUntilMs) {
+                    // Chase: move toward player on both axes
+                    if (distance > 0.0001f) {
+                        val nx = dx / distance
+                        val ny = dy / distance
+                        enemy.x += nx * speed
+                        enemy.y += ny * speed
+                        enemy.facingLeft = nx < 0f
+                    }
+                    // Constrain vertical position inside screen bounds while chasing
+                    val spriteHeight = fhMove * cfgMove.scale
+                    if (enemy.y < 0f) enemy.y = 0f
+                    if (enemy.y + spriteHeight > height.toFloat()) enemy.y = height.toFloat() - spriteHeight
+                } else {
+                    // Patrol: horizontal movement only
+                    if (enemy.movingLeft) {
+                        enemy.x -= speed
+                        enemy.facingLeft = true
+                    } else {
+                        enemy.x += speed
+                        enemy.facingLeft = false
+                    }
+                }
+
+                // Horizontal wrap remains for both modes
                 val spriteWidth = fwMove * cfgMove.scale
                 val quickOffset = spriteWidth * 0.25f
                 if (enemy.x + spriteWidth < 0f) {
