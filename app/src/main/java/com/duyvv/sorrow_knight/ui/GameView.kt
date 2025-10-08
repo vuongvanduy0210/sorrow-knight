@@ -205,7 +205,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private val mushrooms = mutableListOf<MapItem>()
     private val mushroomBitmap: Bitmap by lazy { BitmapFactory.decodeResource(resources, R.drawable.mushroom) }
     private var mushroomHealAmount = 2f
-    private var mushroomDropChance = 0f
+    private var mushroomDropChance = 1f
     private val mushroomHitboxInsetXRatio = 0.18f
     private val mushroomHitboxInsetYRatio = 0.22f
     private val mushroomDrawWidthPx = 64f
@@ -213,7 +213,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
 
     private val meats = mutableListOf<MapItem>()
     private val meatBitmap: Bitmap by lazy { BitmapFactory.decodeResource(resources, R.drawable.meat) }
-    private var meatDropChance = 1f
+    private var meatDropChance = 0f
     private val meatHitboxInsetXRatio = 0.18f
     private val meatHitboxInsetYRatio = 0.22f
     private val meatDrawWidthPx = 64f
@@ -225,6 +225,13 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private val enemies = mutableListOf<Enemy>()
 
     // ==================== LEVELS ====================
+    /**
+     * Cấu hình cho từng level: độ khó, số lượng quái tối đa và hệ số tốc độ.
+     * Bao gồm cấu hình rượt đuổi (aggro) theo level:
+     * - [chaseEnabled]: quái có được phép rượt theo nhân vật không
+     * - [chaseDurationMs]: thời gian rượt đuổi sau khi kích hoạt
+     * - [chaseRefreshOnReenter]: nếu true, vào lại vùng tấn công sẽ gia hạn thời gian rượt
+     */
     private data class LevelConfig(
         val name: String,
         val killTarget: Int,
@@ -236,7 +243,6 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         val maxHealthEnemy: Int,
         val chaseEnabled: Boolean,
         val chaseDurationMs: Long,
-        val chaseRefreshOnReenter: Boolean
     )
     private val levels = listOf(
         LevelConfig(
@@ -250,7 +256,6 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             maxHealthEnemy = 10,
             chaseEnabled = false,
             chaseDurationMs = 0L,
-            chaseRefreshOnReenter = false
         ),
         LevelConfig(
             name = "Level 2",
@@ -263,7 +268,6 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             maxHealthEnemy = 12,
             chaseEnabled = true,
             chaseDurationMs = 5000L,
-            chaseRefreshOnReenter = false
         ),
         LevelConfig(
             name = "Level 3",
@@ -276,7 +280,6 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             maxHealthEnemy = 15,
             chaseEnabled = true,
             chaseDurationMs = 5000L,
-            chaseRefreshOnReenter = false
         )
     )
     private var currentLevelIndex = 0
@@ -437,6 +440,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     private val levelTransitionButtonRect = RectF()
 
     // ==================== Lifecycle ====================
+    /**
+     * Được gọi khi kích thước view thay đổi. Thiết lập vị trí nhân vật,
+     * spawn quái ban đầu, khởi tạo âm thanh và đặt lại các biến trạng thái cấp game.
+     */
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         setupCharacterPosition(h)
@@ -457,6 +464,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         } catch (_: Exception) {}
     }
 
+    /** Khởi tạo hệ thống âm thanh (SoundPool) và nạp các hiệu ứng âm thanh cần dùng. */
     fun initAudio() {
         val audioAttributes = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_GAME)
@@ -477,12 +485,17 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         wallHitSoundId = soundPool?.load(context, R.raw.hit, 1) ?: 0
     }
 
+    /** Hủy tài nguyên âm thanh khi view bị tháo khỏi window để tránh rò rỉ. */
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
         soundPool?.release()
         soundPool = null
     }
 
+    /**
+     * Xử lý chạm màn hình khi đang ở overlay chuyển level:
+     * chạm nút Next để chuyển level (nếu đủ điều kiện), hoặc đóng overlay.
+     */
     override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
         if (isInLevelTransition) {
             if (event.action == android.view.MotionEvent.ACTION_UP) {
@@ -503,6 +516,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         return super.onTouchEvent(event)
     }
 
+    /**
+     * Main frame callback. Handles game state flow (game over/win),
+     * level transition overlay, and per-frame updates (player, enemies, projectiles, items, effects).
+     */
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
@@ -521,12 +538,9 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             return
         }
 
-        if (isGameOver || isGameWon) {
+        if (isGameOver) {
             return
         }
-
-        // While in transition, keep paused until user taps Next
-        val now = System.currentTimeMillis()
 
         if (!isInLevelTransition) {
             updateCharacterState()
@@ -556,6 +570,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         postInvalidateOnAnimation()
     }
 
+    /** Vẽ overlay chuyển level (tiêu đề, phụ đề, và nút Next). */
     private fun drawLevelTransitionOverlay(canvas: Canvas) {
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), levelOverlayBgPaint)
         val title = currentLevel.name
@@ -583,12 +598,14 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
     }
 
     // ==================== INIT ====================
+    /** Đặt vị trí ban đầu của nhân vật theo chiều dọc giữa màn hình. */
     private fun setupCharacterPosition(viewHeight: Int) {
         characterX = 0f
         characterY = (viewHeight - runFrameHeight * scale) / 2f
     }
 
     // ==================== DRAW ====================
+    /** Vẽ các vật phẩm nấm (mushroom) còn tồn tại trên bản đồ. */
     private fun drawMushrooms(canvas: Canvas) {
         if (mushroomBitmap.width <= 0 || mushroomBitmap.height <= 0) return
         for (m in mushrooms) {
@@ -598,6 +615,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         }
     }
 
+    /** Vẽ các vật phẩm thịt (meat) còn tồn tại trên bản đồ. */
     private fun drawMeats(canvas: Canvas) {
         if (meatBitmap.width <= 0 || meatBitmap.height <= 0) return
         for (m in meats) {
@@ -607,6 +625,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         }
     }
 
+    /** Vẽ quái: chọn sheet theo trạng thái, cắt frame, lật theo hướng nhìn và vẽ thanh máu. */
     private fun drawEnemies(canvas: Canvas) {
         for (enemy in enemies) {
             if (enemy.isDestroyed) continue
@@ -656,6 +675,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         }
     }
 
+    /** Vẽ các mũi tên (projectile) đang tồn tại. */
     private fun drawArrows(canvas: Canvas) {
         if (arrowBitmap.width <= 0 || arrowBitmap.height <= 0) return
         for (arrow in arrows) {
@@ -676,6 +696,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         }
     }
 
+    /** Vẽ hoạt ảnh nổ theo frame hiện tại. */
     private fun drawExplosions(canvas: Canvas) {
         for (explosion in explosions) {
             if (explosion.isFinished) continue
@@ -695,11 +716,11 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         }
     }
 
+    /** Vẽ nhân vật: chọn sprite theo trạng thái (tấn công, thủ, chạy, đứng yên) và lật theo hướng nhìn. */
     private fun drawCharacter(canvas: Canvas) {
         val bitmap: Bitmap
         val frameWidth: Int
         val frameHeight: Int
-        val totalFrames: Int
 
         when {
             isAttacking -> {
@@ -708,25 +729,21 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                         bitmap = attackSprite
                         frameWidth = attackFrameWidth
                         frameHeight = attackFrameHeight
-                        totalFrames = attackTotalFrames
                     }
                     AttackType.WARRIOR -> {
                         bitmap = warriorAttackSprite
                         frameWidth = warriorAttackFrameWidth
                         frameHeight = warriorAttackFrameHeight
-                        totalFrames = warriorAttackTotalFrames
                     }
                     AttackType.LANCER -> {
                         bitmap = lancerAttackSprite
                         frameWidth = lancerAttackFrameWidth
                         frameHeight = lancerAttackFrameHeight
-                        totalFrames = lancerAttackTotalFrames
                     }
                     else -> {
                         bitmap = attackSprite
                         frameWidth = attackFrameWidth
                         frameHeight = attackFrameHeight
-                        totalFrames = attackTotalFrames
                     }
                 }
             }
@@ -734,19 +751,16 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 bitmap = guardSprite
                 frameWidth = guardFrameWidth
                 frameHeight = guardFrameHeight
-                totalFrames = guardTotalFrames
             }
             isMoving -> {
                 bitmap = runSprite
                 frameWidth = runFrameWidth
                 frameHeight = runFrameHeight
-                totalFrames = runTotalFrames
             }
             else -> {
                 bitmap = runSprite
                 frameWidth = runFrameWidth
                 frameHeight = runFrameHeight
-                totalFrames = runTotalFrames
                 currentFrame = 0
             }
         }
@@ -847,10 +861,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         }
     }
 
-    private fun drawHitbox(canvas: Canvas) {
-        canvas.drawRect(dstRect, hitboxPaint)
-    }
-
+    /** Vẽ thanh máu (HUD) của người chơi ở góc trái trên. */
     private fun drawPlayerHealthHud(canvas: Canvas) {
         val padding = 16f
         val hbWidth = width * 0.3f
@@ -867,6 +878,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         canvas.drawRect(hbLeft, hbTop, hbRight, hbBottom, healthBarBorderPaint)
     }
 
+    /** Vẽ thời gian chơi (phút:giây) ở góc phải trên. */
     private fun drawGameTimeHud(canvas: Canvas) {
         val padding = 16f
         val currentTime = System.currentTimeMillis()
@@ -882,6 +894,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         canvas.drawText(timeString, textX, textY, hudTextPaint)
     }
 
+    /** Vẽ tên level và tiến độ tiêu diệt quái (kills/target). */
     private fun drawLevelHud(canvas: Canvas) {
         val padding = 16f
         val name = currentLevel.name
@@ -893,6 +906,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         canvas.drawText(text, x, y, hudTextPaint)
     }
 
+    /** Vẽ hiệu ứng flash đỏ khi người chơi bị trúng đòn (không có khi đang có khiên). */
     private fun drawDamageFlash(canvas: Canvas) {
         if (hasShield) return
         val now = System.currentTimeMillis()
@@ -905,6 +919,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         }
     }
 
+    /** Cập nhật nhặt vật phẩm: kiểm tra va chạm với nấm/thịt và áp dụng hiệu ứng. */
     private fun updateItems() {
         if (mushroomBitmap.width <= 0 || mushroomBitmap.height <= 0) return
         if (meatBitmap.width <= 0 || meatBitmap.height <= 0) return
@@ -956,12 +971,14 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         meats.removeAll { it.isDestroyed }
     }
 
+    /**
+     * Cập nhật trạng thái/di chuyển nhân vật theo hướng nhập (nếu có),
+     * giới hạn trong màn hình và phát âm thanh khi va vào tường.
+     */
     private fun updateCharacterState() {
         isMoving = movingDirection != null
 
         movingDirection?.let { dir ->
-            val oldX = characterX
-            val oldY = characterY
             val speed = baseSpeed * currentLevel.playerSpeedMultiplier
 
             when (dir) {
@@ -977,6 +994,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 }
             }
 
+            // check wall
             val maxX = width - runFrameWidth * scale
             val maxY = height - runFrameHeight * scale
             val newX = characterX.coerceIn(0f, maxX)
@@ -996,6 +1014,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         }
     }
 
+    /**
+     * Cập nhật khung hình hoạt ảnh theo trạng thái: thủ, tấn công (3 kiểu), chạy/đứng.
+     * Tại khung chỉ định sẽ sinh mũi tên hoặc áp sát gây sát thương.
+     */
     private fun updateAnimationFrame() {
         if (isGuarding) {
             val now = System.currentTimeMillis()
@@ -1069,6 +1091,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         }
     }
 
+    /** Tính toán vùng chém/đâm cận chiến và gây sát thương lên quái va chạm. */
     private fun applyMeleeDamage() {
         val width = runFrameWidth * scale
         val height = runFrameHeight * scale
@@ -1094,14 +1117,23 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             killsThisLevel += killed.size
 
             val canSpawn = (effectiveMaxEnemies() - enemies.size).coerceAtLeast(0)
-            val toSpawn = minOf(canSpawn, killed.size)
-            repeat(toSpawn) {
+            repeat(canSpawn) {
                 val types = listOf(Enemy.Type.TORCH, Enemy.Type.WARRIOR, Enemy.Type.TNT)
                 spawnEnemy(types.random())
             }
         }
     }
 
+    /**
+     * Update enemies each frame:
+     * - Maintain min/max population and compute player hitbox
+     * - For each enemy:
+     *   - If not ATTACK: decide between patrol vs chase based on level aggro rules
+     *   - Chase uses normalized vector to move on X/Y; patrol moves horizontally
+     *   - Wrap horizontally; clamp vertically
+     *   - Manage ATTACK state transitions and damage windows
+     * - Cleanup destroyed enemies and backfill spawns up to cap
+     */
     private fun updateEnemies() {
         val now = System.currentTimeMillis()
 
@@ -1112,8 +1144,6 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 val types = listOf(Enemy.Type.TORCH, Enemy.Type.WARRIOR, Enemy.Type.TNT)
                 spawnEnemy(types.random())
             }
-        } else if (aliveBefore < previousAliveEnemies && aliveBefore < effectiveMaxEnemies()) {
-            // Handled in applyMeleeDamage or checkEnemyHit
         }
 
         playerBoxRect.set(
@@ -1137,7 +1167,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 val playerCenterX = characterX + (runFrameWidth * scale) / 2f
                 val playerCenterY = characterY + (runFrameHeight * scale) / 2f
 
-                // Detection & timed aggro based on attack range with per-level config
+                // Phát hiện & rượt theo thời gian dựa trên vùng tấn công (có cấu hình theo level)
                 val dx = playerCenterX - enemyCenterX
                 val dy = playerCenterY - enemyCenterY
                 val distance = kotlin.math.hypot(dx.toDouble(), dy.toDouble()).toFloat()
@@ -1147,15 +1177,11 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 val distYForAggro = abs(dy)
                 if (currentLevel.chaseEnabled && distXForAggro < attackRangeXForAggro && distYForAggro < attackRangeYForAggro) {
                     val until = now + currentLevel.chaseDurationMs
-                    if (currentLevel.chaseRefreshOnReenter) {
-                        if (until > enemy.aggroUntilMs) enemy.aggroUntilMs = until
-                    } else {
-                        if (enemy.aggroUntilMs <= now) enemy.aggroUntilMs = until
-                    }
+                    if (enemy.aggroUntilMs <= now) enemy.aggroUntilMs = until
                 }
 
                 if (currentLevel.chaseEnabled && now < enemy.aggroUntilMs) {
-                    // Chase: move toward player on both axes
+                    // Rượt đuổi: di chuyển về phía người chơi theo cả 2 trục
                     if (distance > 0.0001f) {
                         val nx = dx / distance
                         val ny = dy / distance
@@ -1163,12 +1189,12 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                         enemy.y += ny * speed
                         enemy.facingLeft = nx < 0f
                     }
-                    // Constrain vertical position inside screen bounds while chasing
+                    // Giới hạn vị trí theo chiều dọc khi đang rượt
                     val spriteHeight = fhMove * cfgMove.scale
                     if (enemy.y < 0f) enemy.y = 0f
                     if (enemy.y + spriteHeight > height.toFloat()) enemy.y = height.toFloat() - spriteHeight
                 } else {
-                    // Patrol: horizontal movement only
+                    // Đi tuần: chỉ di chuyển theo chiều ngang
                     if (enemy.movingLeft) {
                         enemy.x -= speed
                         enemy.facingLeft = true
@@ -1178,7 +1204,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                     }
                 }
 
-                // Horizontal wrap remains for both modes
+                // Xử lý khi enemy ra khỏi màn hinh
                 val spriteWidth = fwMove * cfgMove.scale
                 val quickOffset = spriteWidth * 0.25f
                 if (enemy.x + spriteWidth < 0f) {
@@ -1189,6 +1215,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 }
             }
 
+            // check nhân vật có trong tầm tấn công của enemy không
             val cfgForRange = getConfig(enemy.type)
             val fwRange = (cfgForRange.moveSheet.width / cfgForRange.moveColumns)
             val fhRange = cfgForRange.moveSheet.height
@@ -1196,13 +1223,14 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
             val enemyCenterY = enemy.y + (fhRange * cfgForRange.scale) / 2f
             val playerCenterX = characterX + (runFrameWidth * scale) / 2f
             val playerCenterY = characterY + (runFrameHeight * scale) / 2f
-            val distX = kotlin.math.abs(playerCenterX - enemyCenterX)
-            val distY = kotlin.math.abs(playerCenterY - enemyCenterY)
+            val distX = abs(playerCenterX - enemyCenterX)
+            val distY = abs(playerCenterY - enemyCenterY)
             val attackRangeX = fwRange * cfgForRange.scale * 0.6f
             val attackRangeY = fhRange * cfgForRange.scale * 0.6f
 
             val shouldAttack = distX < attackRangeX && distY < attackRangeY
 
+            // set state sang attack nếu trong tầm đánh
             if (enemy.state == Enemy.State.ATTACK) {
                 if (shouldAttack) {
                     enemy.facingLeft = playerCenterX < enemyCenterX
@@ -1216,6 +1244,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                 }
             }
 
+            // nếu đang tấn công thì phải hoàn thành anim tấn công rồi di chuyển thì mới được tấn công tiếp
             val cfgForAnim = getConfig(enemy.type)
             val duration = cfgForAnim.frameDurationMs
             if (now - enemy.frameTimerMs > duration) {
@@ -1279,6 +1308,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         previousAliveEnemies = enemies.count { !it.isDestroyed }
     }
 
+    /** Update arrows: movement, culling, and collision damage with enemies. */
     private fun updateArrows() {
         if (arrowBitmap.width <= 0 || arrowBitmap.height <= 0) return
         val iterator = arrows.iterator()
@@ -1316,6 +1346,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         }
     }
 
+    /** Advance explosion animations and apply one-time damage at the damage frame. */
     private fun updateExplosions() {
         val now = System.currentTimeMillis()
         val iterator = explosions.iterator()
@@ -1359,22 +1390,27 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         }
     }
 
+    /** Bắt đầu di chuyển nhân vật theo hướng [direction]. */
     fun startMoving(direction: Direction) {
         movingDirection = direction
     }
 
+    /** Dừng di chuyển nhân vật. */
     fun stopMoving() {
         movingDirection = null
     }
 
+    /** Gọi hành động tấn công mặc định (bắn cung). */
     fun attack() { attackArcher() }
 
+    /** Nhấn nút Next để chuyển level nếu đủ điều kiện và không đang ở overlay. */
     fun advanceLevelByButton() {
         if (isGameWon) return
         if (isInLevelTransition) return
         advanceLevel()
     }
 
+    /** Tấn công cận chiến kiểu Warrior (nếu đã mở khóa). */
     fun attackWarrior() {
         if (!isWarriorUnlocked()) return
         isAttacking = true
@@ -1384,6 +1420,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         postDelayed({ isAttacking = false; currentAttackType = AttackType.NONE }, 500)
     }
 
+    /** Tấn công kiểu Archer (bắn tên), sinh mũi tên tại frame thích hợp. */
     fun attackArcher() {
         if (!isArcherUnlocked()) return
         isAttacking = true
@@ -1393,6 +1430,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         postDelayed({ isAttacking = false; currentAttackType = AttackType.NONE }, 500)
     }
 
+    /** Tấn công cận chiến kiểu Lancer (đâm), gây sát thương ở frame chỉ định. */
     fun attackLancer() {
         if (!isLancerUnlocked()) return
         isAttacking = true
@@ -1402,21 +1440,25 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         postDelayed({ isAttacking = false; currentAttackType = AttackType.NONE }, 500)
     }
 
+    /** Bật trạng thái thủ (giảm sát thương nhận vào). */
     fun startGuarding() {
         if (!isGuardUnlocked()) return
         isGuarding = true
         currentFrame = 0
     }
 
+    /** Tắt trạng thái thủ. */
     fun stopGuarding() {
         isGuarding = false
     }
 
+    /** Mở màn hình Game Over. */
     private fun showGameOverScreen() {
         val intent = Intent(context, GameOverActivity::class.java)
         context.startActivity(intent)
     }
 
+    /** Mở màn hình chiến thắng và truyền thống kê thời gian, số quái, level. */
     private fun showVictoryScreen() {
         val gameTime = System.currentTimeMillis() - gameStartTime
         val intent = Intent(context, VictoryActivity::class.java)
@@ -1426,6 +1468,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         context.startActivity(intent)
     }
 
+    /** Reset toàn bộ trạng thái game về ban đầu và vẽ lại ngay. */
     fun resetGame() {
         playerHealth = playerMaxHealth
         isGameOver = false
@@ -1465,6 +1508,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         } catch (_: Exception) {}
     }
 
+    /** Tính hitbox của enemy dựa trên sheet và scale, ghi vào [outRect]. */
     private fun getEnemyHitboxInto(enemy: Enemy, outRect: RectF) {
         val cfg = getConfig(enemy.type)
         val fw = (cfg.moveSheet.width / cfg.moveColumns)
@@ -1481,10 +1525,14 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         )
     }
 
+    /** Xác suất rơi vật phẩm (nấm/thịt) và hiệu ứng nổ khi quái bị tiêu diệt. */
     private fun maybeDropItem(enemy: Enemy) {
         val effectiveDropBonus = currentLevel.dropBonus
-        val mushroomRoll = Math.random().toFloat()
-        if (mushroomRoll <= mushroomDropChance * effectiveDropBonus) {
+        val pMush = (mushroomDropChance * effectiveDropBonus).coerceIn(0f, 1f)
+        val pMeat = (meatDropChance * effectiveDropBonus).coerceIn(0f, 1f)
+        val r = Math.random().toFloat()
+
+        if (r < pMush) {
             val dropX = (enemy.x + enemyDstRect.width() * 0.5f).coerceIn(0f, (width - mushroomDrawWidthPx).coerceAtLeast(0f))
             val dropY = (enemy.y + enemyDstRect.height() * 0.5f).coerceIn(0f, (height - mushroomDrawHeightPx).coerceAtLeast(0f))
             mushrooms.add(
@@ -1495,10 +1543,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
                     bitmap = mushroomBitmap
                 )
             )
-        }
-
-        val meatRoll = Math.random().toFloat()
-        if (meatRoll <= meatDropChance * effectiveDropBonus) {
+        } else if (r < pMush + pMeat) {
             val dropX = (enemy.x + enemyDstRect.width() * 0.5f).coerceIn(0f, (width - meatDrawWidthPx).coerceAtLeast(0f))
             val dropY = (enemy.y + enemyDstRect.height() * 0.5f).coerceIn(0f, (height - meatDrawHeightPx).coerceAtLeast(0f))
             meats.add(
@@ -1525,6 +1570,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         }
     }
 
+    /** Spawn một enemy [type] tại vị trí hợp lệ ngẫu nhiên và áp dụng hệ số theo level. */
     private fun spawnEnemy(type: Enemy.Type) {
         val cfg = getConfig(type)
         val frameWidth = cfg.moveSheet.width / cfg.moveColumns
@@ -1619,10 +1665,15 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         }
     }
 
+    /** Bật/tắt âm thanh của trò chơi. */
     fun toggleSound(isEnabled: Boolean) {
         isEnabledSound = isEnabled
     }
 
+    /**
+     * Move to the next level, rebalancing enemy count to the new cap,
+     * resetting per-level counters/state, updating background, and showing the transition overlay.
+     */
     private fun advanceLevel() {
         if (currentLevelIndex < levels.size - 1) {
             currentLevelIndex += 1
@@ -1659,6 +1710,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : View(context, at
         }
     }
 
+    /** Reset transient gameplay state and spawn initial enemies for the new level. */
     private fun resetStateForNewLevel() {
         playerHealth = playerMaxHealth
         hasShield = false
